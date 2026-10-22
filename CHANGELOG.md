@@ -4,7 +4,7 @@ All notable changes to Gearbox are documented here. Every released version has a
 
 Write a version's entry before releasing it, and put the same prose in `release-notes/v<version>.md`: `release.sh` publishes that file as the release's notes, and stops before building anything when it is absent.
 
-## [Unreleased]
+## [0.3] — 2026-10-22
 
 Gearbox runs mrk's commands in a console of its own, instead of in Terminal.
 
@@ -17,6 +17,13 @@ Gearbox runs mrk's commands in a console of its own, instead of in Terminal.
 **Added**
 - The screen is Phosphor Green, Phosphor Amber or Plain, from the display button over it. Gearbox keeps the choice in its own defaults domain. A phosphor shows a program's colours in its own, with bold brighter and dim fainter; Plain shows the colours.
 - `--snapshot` draws the console too, running `make dock ARGS=-n`, the dry run, which changes nothing.
+
+**Note**
+- macOS now holds Gearbox, not Terminal, responsible for what these commands do. If macOS asks whether Gearbox may reach another app's data, or `make defaults` cannot write a key in a protected domain, give Gearbox the access in System Settings → Privacy & Security.
+
+**Requirements**
+- A Mac with Apple silicon.
+- An mrk from 2026-10-22 on, as for 0.2. The console runs the same `make` targets the Terminal window ran.
 
 ## [0.2] — 2026-10-22
 
