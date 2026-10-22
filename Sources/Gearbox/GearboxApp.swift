@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-let appVersion = "0.1"
+let appVersion = "0.2"
 
 /// Decides, before anything else runs, whether this launch is the app or only
 /// a host for tests, as the sibling apps' AppLauncher does.
