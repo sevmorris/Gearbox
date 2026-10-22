@@ -71,16 +71,16 @@ struct DockPane: View {
                 .help("Delete the selected item from config/dock.txt")
                 RefreshButton(action: dock.load, busy: dock.phase.isLoading)
                 Button { confirmApply = true } label: { Label("Apply…", systemImage: "dock.arrow.down.rectangle") }
-                    .help("Run make dock in a terminal")
+                    .help("Run make dock in Gearbox's console")
             }
         }
         .confirmationDialog("Rebuild the Dock from config/dock.txt?", isPresented: $confirmApply) {
-            Button("Open in Terminal") { Task { await model.runInTerminal(.applyDock) } }
+            Button("Apply") { Task { await model.runInConsole(.applyDock) } }
         } message: {
             Text("make dock deletes every item from the Dock, adds the items of this list, and restarts the Dock. "
                  + "It saved the Dock once, the first time it ran, to ~/.mrk/plist-backups/com.apple.dock.plist, "
                  + "and does not save it again, so a layout you made by hand since then is lost. "
-                 + "It runs in a terminal.")
+                 + "It runs in Gearbox's console.")
         }
         .task { if dock.phase == .idle { await dock.load() } }
     }

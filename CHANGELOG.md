@@ -4,6 +4,27 @@ All notable changes to Gearbox are documented here. Every released version has a
 
 Write a version's entry before releasing it, and put the same prose in `release-notes/v<version>.md`: `release.sh` publishes that file as the release's notes, and stops before building anything when it is absent.
 
+## [0.3] — 2026-10-22
+
+Gearbox runs mrk's commands in a console of its own, instead of in Terminal.
+
+**Changed**
+- **The commands that change the Mac run in Gearbox's console**, a sheet over the window with a phosphor screen like Magic Backup Machine's, instead of in a Terminal window opened through a `.command` file. **Snapshot…**, **Apply All…** and **Apply…** run `make snapshot-prefs`, `make defaults` (or `make trackpad`) and `make dock` there, as the file ran them: under zsh in the checkout, with the login shell's environment and `MRK_ROOT`.
+- **What a command asks works as it did in Terminal.** It runs on a pseudo-terminal of its own, so snapshot-prefs's secret scan stops and asks before it commits: type the answer, and Return sends it. ⌃C or ⌘. stops the command, and Stop sends ⌃C, then SIGTERM, then SIGKILL.
+- **The pane reads mrk again when the command exits**, so there is no Refresh to press afterwards. The console shows how the command exited, and Done closes it.
+- While the console is up, Gearbox's window does not close and Gearbox does not quit, so nothing hangs up a command half way.
+
+**Added**
+- The screen is Phosphor Green, Phosphor Amber or Plain, from the display button over it. Gearbox keeps the choice in its own defaults domain. A phosphor shows a program's colours in its own, with bold brighter and dim fainter; Plain shows the colours.
+- `--snapshot` draws the console too, running `make dock ARGS=-n`, the dry run, which changes nothing.
+
+**Note**
+- macOS now holds Gearbox, not Terminal, responsible for what these commands do. If macOS asks whether Gearbox may reach another app's data, or `make defaults` cannot write a key in a protected domain, give Gearbox the access in System Settings → Privacy & Security.
+
+**Requirements**
+- A Mac with Apple silicon.
+- An mrk from 2026-10-22 on, as for 0.2. The console runs the same `make` targets the Terminal window ran.
+
 ## [0.2] — 2026-10-22
 
 Gearbox reads mrk's `--check` modes by the line contract of [sevmorris/mrk#122](https://github.com/sevmorris/mrk/pull/122), and still reads an mrk from before it.

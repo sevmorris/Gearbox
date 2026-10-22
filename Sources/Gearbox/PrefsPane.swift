@@ -63,14 +63,14 @@ struct PrefsPane: View {
                 Button { confirmSnapshot = true } label: {
                     Label("Snapshot…", systemImage: "square.and.arrow.up.on.square")
                 }
-                .help("Run make snapshot-prefs in a terminal")
+                .help("Run make snapshot-prefs in Gearbox's console")
             }
         }
         .confirmationDialog("Snapshot the app preferences?", isPresented: $confirmSnapshot) {
-            Button("Open in Terminal") { Task { await model.runInTerminal(.snapshotPrefs) } }
+            Button("Snapshot") { Task { await model.runInConsole(.snapshotPrefs) } }
         } message: {
             Text("make snapshot-prefs exports the app preferences, commits them to mrk-prefs and pushes. "
-                 + "It runs in a terminal, so its secret scan can stop and ask you before it commits.")
+                 + "It runs in Gearbox's console, where its secret scan can stop and ask you before it commits.")
         }
         .task { if prefs.phase == .idle { await prefs.load() } }
     }

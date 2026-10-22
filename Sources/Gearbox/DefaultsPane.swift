@@ -67,18 +67,18 @@ struct DefaultsPane: View {
                 Button { confirmApply = true } label: {
                     Label("Apply All…", systemImage: "checkmark.seal")
                 }
-                .help("Run \(TerminalCommand.applyDefaults(withTrackpad: defaults.withTrackpad).command) in a terminal")
+                .help("Run \(TerminalCommand.applyDefaults(withTrackpad: defaults.withTrackpad).command) in Gearbox's console")
             }
         }
         .confirmationDialog("Apply all the defaults?", isPresented: $confirmApply) {
-            Button("Open in Terminal") {
-                Task { await model.runInTerminal(.applyDefaults(withTrackpad: defaults.withTrackpad)) }
+            Button("Apply All") {
+                Task { await model.runInConsole(.applyDefaults(withTrackpad: defaults.withTrackpad)) }
             }
         } message: {
             Text("\(TerminalCommand.applyDefaults(withTrackpad: defaults.withTrackpad).command) writes each key "
                  + "that is not set, and records its old value in ~/.mrk/defaults-rollback.sh. "
                  + "Then it restarts Finder, the Dock and SystemUIServer, so their windows and the menu bar "
-                 + "close and open again. It runs in a terminal.")
+                 + "close and open again. It runs in Gearbox's console.")
         }
         .task { if defaults.phase == .idle { await defaults.load() } }
     }
