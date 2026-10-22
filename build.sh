@@ -4,9 +4,9 @@ set -euo pipefail
 # Build Gearbox.app into build/, for running on this Mac.
 #
 # A Swift package, not an Xcode project, built as Dipstick is: swift builds
-# the binary, and scripts/assemble-app.sh builds the bundle around it, so a
-# release.sh added later makes the same bundle. The bundle is signed ad hoc
-# and not notarized.
+# the binary, and scripts/assemble-app.sh builds the bundle around it, as it
+# does for release.sh. The bundle is signed ad hoc and not notarized; release.sh
+# signs with the Developer ID and notarizes.
 #
 # An ad hoc signature changes with every build, and macOS keys the Automation
 # permission to it, so a rebuilt Gearbox asks again to control System Events

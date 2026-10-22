@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        Entitlements for the Developer ID signature, which uses the hardened
+        runtime (required for notarization).
+
+        The app is not sandboxed, and cannot be: it runs mrk's scripts in a
+        login shell, reads and writes the mrk checkout, and opens .command
+        files that run commands in it. So the network entitlement below is
+        declarative rather than load-bearing: an unsandboxed process may make
+        outgoing connections regardless. It is recorded here because the
+        update check is the app's one connection.
+    -->
+
+    <!-- Outgoing HTTPS: update checks against api.github.com -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Apple events, for the Login Items pane. mrk's sync-login-items asks
+         System Events for the login items with osascript, and macOS holds
+         Gearbox responsible for that request. Under the hardened runtime,
+         macOS refuses Apple events from an app without this entitlement and
+         does not ask; with it, macOS asks once, showing the Info.plist's
+         NSAppleEventsUsageDescription. release.sh checks both. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+
+    <!-- Deliberately not requested: no JIT, no unsigned executable memory, no
+         library validation exemption. The processes Gearbox starts are their
+         own programs with their own signatures; the hardened runtime
+         constrains Gearbox, not them. -->
+</dict>
+</plist>

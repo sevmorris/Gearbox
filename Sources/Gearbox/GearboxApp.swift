@@ -9,8 +9,9 @@ let appVersion = "0.1"
 /// `swift test` links this module into the test runner and never calls
 /// main(), so today nothing launches the app under a test. The guard is here
 /// from the start all the same: Gearbox stores settings of its own (the pane
-/// it shows, the defaults filter), SwiftUI records its window frames, and a
-/// test run must never touch the developer's real ones.
+/// it shows, the defaults filter, the update check's dates), SwiftUI records
+/// its window frames, and a test run must never touch the developer's real
+/// ones.
 #if !TESTING
 @main
 #endif
@@ -77,10 +78,27 @@ struct GearboxApp: App {
                         let written = await Snapshot.write(model: model, to: dir)
                         exit(written ? 0 : 1)
                     }
+                    // The quiet update check: now, and each time Gearbox comes
+                    // to the front, which the schedule holds to one request an
+                    // hour. A check at launch alone misses the case Magic
+                    // Backup Machine found: the window stays open, a release
+                    // is cut, and the app never looks again.
+                    await model.checkForUpdatesAndTell(quietly: true)
+                    let activations = NotificationCenter.default.notifications(
+                        named: NSApplication.didBecomeActiveNotification
+                    ).map { _ in () }
+                    for await _ in activations {
+                        await model.checkForUpdatesAndTell(quietly: true)
+                    }
                 }
         }
         .defaultSize(width: 1120, height: 720)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task { await model.checkForUpdatesAndTell(quietly: false) }
+                }
+            }
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .toolbar) {
                 Button("Refresh") {

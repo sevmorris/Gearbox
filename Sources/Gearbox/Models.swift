@@ -48,12 +48,20 @@ final class AppModel {
     }
     /// Set when a terminal command could not start.
     var terminalError: String?
+    /// A newer Gearbox, found by the last check that reached GitHub. The
+    /// sidebar names it.
+    private(set) var availableUpdate: AvailableUpdate?
+    /// Asks GitHub for the latest release. The tests pass their own.
+    private let latestRelease: @Sendable () async -> UpdateChecker.Result
+    private var isCheckingForUpdates = false
 
     init(checkout: MrkCheckout, runner: MrkRunner, store: UserDefaults = .app,
-         home: String = NSHomeDirectory()) {
+         home: String = NSHomeDirectory(),
+         latestRelease: @escaping @Sendable () async -> UpdateChecker.Result = { await UpdateChecker.shared.check() }) {
         self.checkout = checkout
         self.runner = runner
         self.store = store
+        self.latestRelease = latestRelease
         prefs = PrefsModel(checkout: checkout, runner: runner)
         defaults = DefaultsModel(checkout: checkout, runner: runner, store: store)
         loginItems = LoginItemsModel(checkout: checkout, runner: runner)
@@ -80,6 +88,40 @@ final class AppModel {
         case .loginItems: await loginItems.load()
         case .dock: await dock.load()
         }
+    }
+
+    var updateSchedule: UpdateSchedule { UpdateSchedule(store: store) }
+
+    /// Asks GitHub for a newer Gearbox, and returns what to tell you, or nil
+    /// for nothing. Check for Updates… always asks and always answers. The
+    /// quiet check, at launch and each time Gearbox comes to the front, asks
+    /// at most once an hour, and answers only with an update you have not
+    /// said Not Now to. Up to date, a release this Mac cannot run, and a
+    /// failure, it keeps to itself.
+    func checkForUpdates(quietly: Bool, now: Date = Date()) async -> UpdateChecker.Result? {
+        let schedule = updateSchedule
+        // Launching makes Gearbox active as well, so two quiet checks can
+        // start together; the second stops here rather than ask GitHub twice.
+        if quietly && (isCheckingForUpdates || !schedule.isDue(at: now)) { return nil }
+        isCheckingForUpdates = true
+        defer { isCheckingForUpdates = false }
+
+        let result = await latestRelease()
+        schedule.record(result, at: now)
+        switch result {
+        case .available(let update):
+            availableUpdate = update
+        case .upToDate, .needsNewerMacOS:
+            availableUpdate = nil
+        case .error:
+            // A failed check says nothing about what was found before.
+            break
+        }
+        guard quietly else { return result }
+        if case .available(let update) = result, !schedule.isDismissed(update.version) {
+            return result
+        }
+        return nil
     }
 
     /// Runs a command in a terminal, in the checkout, with the login shell's
