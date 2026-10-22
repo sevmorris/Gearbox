@@ -4,7 +4,7 @@ All notable changes to Gearbox are documented here. Every released version has a
 
 Write a version's entry before releasing it, and put the same prose in `release-notes/v<version>.md`: `release.sh` publishes that file as the release's notes, and stops before building anything when it is absent.
 
-## [Unreleased]
+## [0.2] — 2026-10-22
 
 Gearbox reads mrk's `--check` modes by the line contract of [sevmorris/mrk#122](https://github.com/sevmorris/mrk/pull/122), and still reads an mrk from before it.
 
@@ -17,6 +17,10 @@ Gearbox reads mrk's `--check` modes by the line contract of [sevmorris/mrk#122](
 - **Gearbox takes a line with more fields than it knows**, as mrk's contract allows a later version to add them. Gearbox 0.1 needed an exact count, so its Dock pane showed no state against mrk#122.
 - **A name or key with a tab, a newline or a backslash** reads as the script wrote it in the Login Items and App Preferences panes, whose escapes Gearbox now undoes. A login item named with a backslash goes back to `sync-login-items --add` as the script listed it.
 - A carriage return at the end of a field no longer joins two lines.
+
+**Requirements**
+- A Mac with Apple silicon.
+- An mrk from 2026-10-22 on, as for 0.1. Gearbox 0.2 reads mrk both before and after mrk#122, so install it before `make pull` brings mrk#122 in.
 
 ## [0.1] — 2026-10-22
 
