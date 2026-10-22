@@ -21,6 +21,12 @@ The checkout is `~/mrk`, or the one `MRK_ROOT` names. Scripts run in it with the
 
 The Login Items pane needs one: `sync-login-items` reads the login items from System Events with AppleScript, and macOS asks once whether Gearbox may control System Events. If you decline, or System Events returns no login items, `sync-login-items` refuses to compare anything, and the pane says how to give access in System Settings → Privacy & Security → Automation.
 
+## Install
+
+Download the DMG from the [latest release](https://github.com/sevmorris/Gearbox/releases/latest), open it, and drag Gearbox to Applications. It is signed with a Developer ID and notarized by Apple.
+
+**Check for Updates…** in the Gearbox menu asks GitHub for a newer Gearbox. Gearbox also asks without being asked, at launch and when it comes to the front, at most once an hour, and tells you only when a newer version is out. The sidebar then names that version. A version that needs a newer macOS than this Mac has is not offered. The update check is Gearbox's one network request. It keeps the time of the last check, and the version you said Not Now to, in Gearbox's own defaults domain.
+
 ## Build, test, look
 
 ```bash
@@ -31,11 +37,25 @@ build/Gearbox.app/Contents/MacOS/Gearbox --snapshot /tmp/gearbox-shots
 
 `--snapshot DIR` loads each pane in the app's own window, against the real checkout, draws each into `DIR/<n>-<pane>.png`, and quits. It runs only the read-only check modes. It puts the app's defaults domain back as it found it: SwiftUI writes the window's frame there as the window opens, and `snapshot-prefs` exports every `io.github.sevmorris.*` domain.
 
-No test runs a real mrk script or touches real defaults. The scripts are stubs in a temporary folder, and the app's settings go through `UserDefaults.app`, a scratch suite under tests, named by a path in the temporary folder.
+No test runs a real mrk script, touches real defaults or asks GitHub. The scripts are stubs in a temporary folder, the app's settings and the update check's dates go through `UserDefaults.app`, a scratch suite under tests, named by a path in the temporary folder, and the update tests answer for GitHub themselves.
 
 An ad hoc signature changes with every build, and macOS keys the Automation permission to it, so a rebuilt Gearbox asks again.
 
-SwiftPM, macOS 15 or later, Apple silicon. Version 0.1, not released.
+The icon is drawn by `tools/icon/make-appicon.py`, which writes `assets/AppIcon.icns`. `build.sh` and `release.sh` both build the bundle with `scripts/assemble-app.sh`, so a local build and a release differ only in their signature.
+
+SwiftPM, macOS 15 or later, Apple silicon.
+
+## Release
+
+```bash
+caffeinate -dis ./release.sh 0.1
+```
+
+`release.sh` runs the tests, builds, signs with the Developer ID, notarizes, and publishes the DMG as a GitHub release. It releases from `main` only. It needs `release-notes/v<version>.md`, with the same prose as that version's entry in [CHANGELOG.md](CHANGELOG.md), the `notarytool` keychain profile, and a `python3` with `dmgbuild`. Its preflight checks each one before it builds anything.
+
+The release is signed with the hardened runtime, which refuses Apple events from an app without the `com.apple.security.automation.apple-events` entitlement and does not ask. `Gearbox.entitlements` has it, for the Login Items pane. `release.sh` stops when the signature lacks the entitlement, or the bundle lacks `NSAppleEventsUsageDescription`. An ad hoc build from `build.sh` has no hardened runtime, so it cannot show this fault.
+
+`tools/dmg/` and `scripts/check-shared.sh` are shared verbatim with the sibling apps, and `release.sh` stops when they differ. Change them in every repository at once.
 
 ## License
 

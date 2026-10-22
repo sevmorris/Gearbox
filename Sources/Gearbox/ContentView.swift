@@ -12,6 +12,16 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
             .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: 2) {
+                    if let update = model.availableUpdate {
+                        Button {
+                            Task { await model.checkForUpdatesAndTell(quietly: false) }
+                        } label: {
+                            Label("Gearbox \(update.version) is available", systemImage: "arrow.down.circle.fill")
+                        }
+                        .buttonStyle(.link)
+                        .padding(.bottom, 4)
+                        .help("A newer Gearbox is out: download it or read its release notes")
+                    }
                     Text(model.checkout.root.path)
                         .font(.caption.monospaced())
                         .lineLimit(1).truncationMode(.middle)
