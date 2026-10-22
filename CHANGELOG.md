@@ -4,7 +4,25 @@ All notable changes to Gearbox are documented here. Every released version has a
 
 Write a version's entry before releasing it, and put the same prose in `release-notes/v<version>.md`: `release.sh` publishes that file as the release's notes, and stops before building anything when it is absent.
 
-## [0.1] — unreleased
+## [0.2] — 2026-10-22
+
+Gearbox reads mrk's `--check` modes by the line contract of [sevmorris/mrk#122](https://github.com/sevmorris/mrk/pull/122), and still reads an mrk from before it.
+
+**Added**
+- **The Dock pane shows what is in the Dock and not in the list**, in a section of its own. `make dock` deletes these items from the Dock. **Add to the List** puts one in `config/dock.txt`, so `make dock` keeps it. An item of the list that is not in the Dock yet says so. Both come from `dock-setup --check`'s fifth field and `unlisted` lines, which arrive with mrk#122.
+- **The Defaults pane shows a key that waits for its app.** A key that `config/defaults.tsv` writes only once its app has made its preferences, on a Mac where the app has not, is "waiting", not "absent": `make defaults` passes it over. mrk#122's `defaults.sh --check` reports these as `nodomain`; before it, they dropped out of the pane.
+
+**Fixed**
+- **A pane no longer reads "nothing to do" when it could not read mrk's output.** When a check prints lines and Gearbox can read none of them, the pane says that this Gearbox is older than mrk's output, and to check for updates.
+- **Gearbox takes a line with more fields than it knows**, as mrk's contract allows a later version to add them. Gearbox 0.1 needed an exact count, so its Dock pane showed no state against mrk#122.
+- **A name or key with a tab, a newline or a backslash** reads as the script wrote it in the Login Items and App Preferences panes, whose escapes Gearbox now undoes. A login item named with a backslash goes back to `sync-login-items --add` as the script listed it.
+- A carriage return at the end of a field no longer joins two lines.
+
+**Requirements**
+- A Mac with Apple silicon.
+- An mrk from 2026-10-22 on, as for 0.1. Gearbox 0.2 reads mrk both before and after mrk#122, so install it before `make pull` brings mrk#122 in.
+
+## [0.1] — 2026-10-22
 
 The first release.
 

@@ -1,11 +1,19 @@
 import Foundation
 
-/// The two rules mrk's lists share, as BIN-1 documents them.
+/// The rules mrk's lists share, as BIN-1 documents them.
+///
+/// The five --check modes (defaults.sh, dock-setup, sync, sync-login-items
+/// and snapshot-prefs) print their lines by one contract, mrk's
+/// mrk_check_line: one tab between two fields, and each field escaped. A
+/// later mrk may add fields at the end of a line, and new words to a field
+/// that has a fixed set of them; it never removes or reorders a field. So a
+/// reader takes a line with at least the fields it knows, and passes over a
+/// line whose word it does not know.
 enum MrkText {
     /// A field of config/defaults.tsv, docs/defaults/descriptions.tsv or a
-    /// --check line of defaults.sh or dock-setup, with its escapes undone: \t
-    /// is a tab, \n a newline and \\ a backslash. nil for a backslash before
-    /// anything else, which mrk refuses.
+    /// line of any of the five --check modes, with its escapes undone: \t is
+    /// a tab, \n a newline and \\ a backslash. nil for a backslash before
+    /// anything else, which mrk never writes.
     static func unescape(_ field: Substring) -> String? {
         guard field.contains("\\") else { return String(field) }
         var out = ""
@@ -42,9 +50,19 @@ enum MrkText {
     }
 
     /// The lines of a file's text, without the newline that ends the last.
+    /// It splits at every newline scalar: as Characters, a carriage return
+    /// and the newline after it are one, and mrk does not escape a carriage
+    /// return, so a field that ends in one would join two lines.
     static func lines(_ text: String) -> [Substring] {
-        var lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var lines = text.unicodeScalars.split(separator: "\n", omittingEmptySubsequences: false).map(Substring.init)
         if lines.last == "" { lines.removeLast() }
         return lines
+    }
+
+    /// Whether a check printed anything: a line with text in it. A check
+    /// that did, and of which Gearbox read no line, printed what this
+    /// Gearbox does not know.
+    static func hasLines(_ text: String) -> Bool {
+        lines(text).contains { !$0.isEmpty }
     }
 }

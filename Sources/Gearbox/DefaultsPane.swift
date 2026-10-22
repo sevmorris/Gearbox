@@ -11,7 +11,8 @@ struct DefaultsPane: View {
         @Bindable var defaults = model.defaults
         VStack(spacing: 0) {
             PaneNote(text: "Each key mrk sets, from defaults.sh --check, with its description from MRK-1. "
-                     + "Set means a run of make defaults skips it.")
+                     + "Set means a run of make defaults skips it. Waiting means it waits for its app, "
+                     + "whose preferences do not exist yet.")
             Divider()
             if defaults.descriptionsMissing {
                 Label("This mrk has no docs/defaults/descriptions.tsv, so the keys have no descriptions. Run make pull.",
@@ -85,7 +86,8 @@ struct DefaultsPane: View {
     private var subtitle: String {
         guard defaults.phase == .loaded else { return "" }
         let c = defaults.counts
-        return "\(c.set) set · \(c.differs) differ · \(c.absent) absent"
+        let text = "\(c.set) set · \(c.differs) differ · \(c.absent) absent"
+        return c.waiting == 0 ? text : text + " · \(c.waiting) waiting"
     }
 }
 
@@ -96,6 +98,7 @@ struct StateMark: View {
         case .set: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .differs: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         case .absent: Image(systemName: "circle.dashed").foregroundStyle(.secondary)
+        case .nodomain: Image(systemName: "hourglass").foregroundStyle(.secondary)
         }
     }
 }
@@ -134,7 +137,7 @@ struct DefaultDetail: View {
 
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
                     row("mrk sets", value(entry.check.mrkValue, type: entry.row?.type))
-                    row("Now", entry.check.state == .absent ? "absent" : value(entry.check.current, type: nil))
+                    row("Now", nowText)
                     if let d = entry.description, !d.systemDefault.isEmpty { row("macOS default", d.systemDefault) }
                     if let r = entry.row {
                         row("Written", whenText(r.when))
@@ -144,6 +147,12 @@ struct DefaultDetail: View {
                 }
                 .font(.callout)
 
+                if entry.check.state == .nodomain {
+                    block("Waits for the app",
+                          "Its preferences do not exist yet, so make defaults passes this key over. "
+                            + "Open the app once; the next make defaults writes the key.",
+                          color: .secondary)
+                }
                 if let d = entry.description {
                     Text(d.description).fixedSize(horizontal: false, vertical: true)
                     if !d.why.isEmpty { block("Why this setting", d.why, color: .accentColor) }
@@ -171,6 +180,15 @@ struct DefaultDetail: View {
         case .set: return Badge(text: "set", color: .green)
         case .differs: return Badge(text: "differs", color: .orange)
         case .absent: return Badge(text: "absent", color: .secondary)
+        case .nodomain: return Badge(text: "waiting", color: .secondary)
+        }
+    }
+
+    private var nowText: String {
+        switch entry.check.state {
+        case .absent: return "absent"
+        case .nodomain: return "no preferences yet"
+        case .set, .differs: return value(entry.check.current, type: nil)
         }
     }
 

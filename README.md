@@ -15,6 +15,8 @@ A Settings window over [mrk](https://github.com/sevmorris/mrk), this Mac's setup
 
 `descriptions.tsv` and `dock-setup --check` arrived in mrk with [sevmorris/mrk#117](https://github.com/sevmorris/mrk/pull/117). Against an older mrk, the Defaults pane shows the keys without their descriptions, and the Dock pane says to run `make pull`.
 
+Gearbox reads the `--check` lines by the contract BIN-1 states for all five check modes ([sevmorris/mrk#122](https://github.com/sevmorris/mrk/pull/122)): fields split at each tab, each with `\t`, `\n` and `\\` undone, and a line taken when it has at least the fields Gearbox knows, since a later mrk may add more at the end. A line with a word Gearbox does not know is passed over. When a check prints lines and Gearbox reads none of them, the pane says this Gearbox is older than mrk's output, rather than show an empty list. With mrk#122, the Dock pane also shows what is in the Dock and not in `config/dock.txt` (what `make dock` deletes), and the Defaults pane shows a key that waits for its app's preferences.
+
 **Gearbox never commits.** It changes files in the mrk checkout (`config/dock.txt`, and through `sync-login-items` the login-items list and the manual). Committing stays with `mrk-push` and `pushall`, with their secret scan and gates, and Dipstick's Unrecorded panel shows what is waiting. Barkeep works the same way.
 
 The checkout is `~/mrk`, or the one `MRK_ROOT` names. Scripts run in it with the environment of an interactive login zsh, as Dipstick and Barkeep run them. A command that changes the Mac or pushes runs in a terminal window, through a self-deleting `.command` file, so it needs no Automation permission.

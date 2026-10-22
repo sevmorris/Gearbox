@@ -57,21 +57,31 @@ struct DefaultDescription: Hashable, Sendable {
 
 /// One line of `defaults.sh --check`.
 struct DefaultCheck: Hashable, Sendable {
-    enum State: String, Sendable { case set, differs, absent }
+    enum State: String, Sendable {
+        case set, differs, absent
+        /// A when=existing key whose app has not made its preferences yet.
+        /// make defaults passes it over until the app has, so it is not
+        /// drift. An mrk before sevmorris/mrk#122 calls it absent.
+        case nodomain
+
+        /// What a run of make defaults would write.
+        var isDrift: Bool { self == .differs || self == .absent }
+    }
 
     let domain: String
     let key: String
     /// The value mrk sets, with ~/ shown expanded.
     let mrkValue: String
-    /// The value the key has now; empty when it is absent.
+    /// The value the key has now; empty when it is absent or its domain is.
     let current: String
     let state: State
 
-    /// Five fields, escaped as config/defaults.tsv escapes them, in the order
-    /// of the file. A line in any other shape is passed over.
+    /// Five fields or more, by mrk's --check line contract, in the order of
+    /// the file. A line in any other shape, or with a state Gearbox does not
+    /// know, is passed over.
     static func parse(_ output: String) -> [DefaultCheck] {
         MrkText.lines(output).compactMap { line in
-            guard let f = MrkText.fields(line), f.count == 5, let state = State(rawValue: f[4]) else { return nil }
+            guard let f = MrkText.fields(line), f.count >= 5, let state = State(rawValue: f[4]) else { return nil }
             return DefaultCheck(domain: f[0], key: f[1], mrkValue: f[2], current: f[3], state: state)
         }
     }
@@ -126,12 +136,13 @@ struct DefaultsSection: Identifiable, Hashable, Sendable {
     let entries: [DefaultsEntry]
     var id: String { name }
 
-    var counts: (set: Int, differs: Int, absent: Int) {
-        entries.reduce(into: (0, 0, 0)) { c, e in
+    var counts: DefaultsCounts {
+        entries.reduce(into: DefaultsCounts()) { c, e in
             switch e.check.state {
-            case .set: c.0 += 1
-            case .differs: c.1 += 1
-            case .absent: c.2 += 1
+            case .set: c.set += 1
+            case .differs: c.differs += 1
+            case .absent: c.absent += 1
+            case .nodomain: c.waiting += 1
             }
         }
     }
@@ -144,5 +155,19 @@ struct DefaultsSection: Identifiable, Hashable, Sendable {
             bySection[entry.section, default: []].append(entry)
         }
         return order.map { DefaultsSection(name: $0, entries: bySection[$0]!) }
+    }
+}
+
+/// How many keys are in each state.
+struct DefaultsCounts: Equatable, Sendable {
+    var set = 0
+    var differs = 0
+    var absent = 0
+    /// nodomain: keys that wait for their app to make its preferences.
+    var waiting = 0
+
+    static func + (a: DefaultsCounts, b: DefaultsCounts) -> DefaultsCounts {
+        DefaultsCounts(set: a.set + b.set, differs: a.differs + b.differs,
+                       absent: a.absent + b.absent, waiting: a.waiting + b.waiting)
     }
 }

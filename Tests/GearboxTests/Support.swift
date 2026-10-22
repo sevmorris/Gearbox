@@ -2,6 +2,15 @@ import Foundation
 import XCTest
 @testable import Gearbox
 
+/// Real output of mrk's scripts and the config/ files they read, from
+/// Fixtures/, whose README says where each came from.
+enum Fixture {
+    static func text(_ path: String) throws -> String {
+        let dir = try XCTUnwrap(Bundle.module.resourceURL).appendingPathComponent("Fixtures")
+        return try String(contentsOf: dir.appendingPathComponent(path), encoding: .utf8)
+    }
+}
+
 /// A stand-in mrk checkout in a temporary folder. Its scripts are stubs: each
 /// records how it was run in `calls.log`, then prints what its fixture files
 /// hold and exits with the status they give. No test runs a real mrk script.

@@ -17,6 +17,19 @@ final class TSVTests: XCTestCase {
         XCTAssertEqual(MrkText.fields("a\t"), ["a", ""])
     }
 
+    /// As Characters, "\r\n" is one, which a split at "\n" would not find.
+    func testACarriageReturnDoesNotJoinTwoLines() {
+        XCTAssertEqual(MrkText.lines("a\tb\r\nc\td\n"), ["a\tb\r", "c\td"])
+        XCTAssertEqual(MrkText.lines("one\n\ntwo"), ["one", "", "two"])
+        XCTAssertEqual(MrkText.lines(""), [])
+    }
+
+    func testHasLinesIsTextOnSomeLine() {
+        XCTAssertFalse(MrkText.hasLines(""))
+        XCTAssertFalse(MrkText.hasLines("\n\n"))
+        XCTAssertTrue(MrkText.hasLines("\nx\n"))
+    }
+
     func testEntriesFollowMrkConfigEntries() {
         XCTAssertFalse(MrkText.isEntry("# comment"))
         XCTAssertFalse(MrkText.isEntry(""))
@@ -52,6 +65,31 @@ final class PrefsDiffTests: XCTestCase {
         XCTAssertEqual(changes.count, 6)
         XCTAssertEqual(changes[0], PrefChange(file: "AudioHijack.plist", key: "recentFolderPaths", kind: .added))
         XCTAssertEqual(changes[4], PrefChange(file: "repos.tsv", key: "", kind: .changed))
+    }
+
+    /// The --check line contract: escaped fields, and fields a later mrk
+    /// adds at the end.
+    func testEscapedKeysAndExtraFields() {
+        let changes = PrefChange.parse("""
+        Keka.plist\tTab\\tKey\tchanged
+        Keka.plist\tTwo\\nLines\tadded\tsomething later
+        Keka.plist\tC:\\\\temp\tdeleted
+        Keka.plist\tBad\\qEscape\tchanged
+
+        """)
+        XCTAssertEqual(changes, [
+            PrefChange(file: "Keka.plist", key: "Tab\tKey", kind: .changed),
+            PrefChange(file: "Keka.plist", key: "Two\nLines", kind: .added),
+            PrefChange(file: "Keka.plist", key: "C:\\temp", kind: .deleted),
+        ])
+    }
+
+    func testTheRealCheck() throws {
+        XCTAssertEqual(PrefChange.parse(try Fixture.text("mrk-122/snapshot-prefs--check.out")), [
+            PrefChange(file: "sevmorris-apps/io.github.sevmorris.ClipHack.plist", key: "ClipHackSettings", kind: .changed),
+        ])
+        let table = AppPrefsTable.parse(try Fixture.text("mrk-122/app-prefs.tsv"))
+        XCTAssertFalse(table.names.isEmpty)
     }
 
     func testGroupsByTheTablesNameThenByDirectory() {
@@ -126,6 +164,35 @@ final class DefaultsParserTests: XCTestCase {
         XCTAssertEqual(checks[3].current, "one\\two")
     }
 
+    /// sevmorris/mrk#122: nodomain for a when=existing key whose app has not
+    /// made its preferences, and fields a later mrk adds at the end.
+    func testNodomainAndExtraFields() {
+        let checks = DefaultCheck.parse("""
+        com.apple.mail\tAddressesIncludeNameOnPasteboard\tfalse\t\tnodomain
+        NSGlobalDomain\tA\ttrue\ttrue\tset\tsomething later
+        NSGlobalDomain\tB\ttrue\t\tabsent\t\t
+        NSGlobalDomain\tC\ttrue\tfalse\tdiffers
+        four\tfields\tonly\tset
+
+        """)
+        XCTAssertEqual(checks.map(\.state), [.nodomain, .set, .absent, .differs])
+        XCTAssertEqual(checks[0].current, "")
+        XCTAssertEqual(checks.map(\.state.isDrift), [false, false, true, true])
+        let counts = DefaultsSection(name: "x", entries: DefaultsEntry.join(checks: checks, rows: [], descriptions: [:])).counts
+        XCTAssertEqual(counts, DefaultsCounts(set: 1, differs: 1, absent: 1, waiting: 1))
+    }
+
+    func testTheRealCheck() throws {
+        let checks = DefaultCheck.parse(try Fixture.text("mrk-122/defaults.sh--check--with-trackpad.out"))
+        XCTAssertEqual(checks.count, 150)
+        let rows = DefaultsRow.parse(try Fixture.text("mrk-122/defaults.tsv"))
+        let sections = DefaultsSection.group(DefaultsEntry.join(checks: checks, rows: rows, descriptions: [:]))
+        XCTAssertEqual(sections.reduce(DefaultsCounts()) { $0 + $1.counts },
+                       DefaultsCounts(set: 148, differs: 0, absent: 2, waiting: 0))
+        XCTAssertFalse(sections.contains { $0.name == "Not in config/defaults.tsv" },
+                       "every key --check names is a line of the table")
+    }
+
     func testTheSecondDomainOfASettingTakesTheFirstsDescription() {
         let checks = DefaultCheck.parse("""
         com.apple.AppleMultitouchTrackpad\tClicking\ttrue\ttrue\tset
@@ -182,6 +249,27 @@ final class LoginItemsTests: XCTestCase {
         """)
         XCTAssertEqual(offers.map(\.name), ["Raycast", "Old", "Dropbox"])
         XCTAssertEqual(offers[1].reason, .stale)
+    }
+
+    /// The --check line contract: a name goes back to --add as
+    /// sync-login-items wrote it, and a field a later mrk adds is passed by.
+    func testEscapedNamesAndExtraFields() {
+        let offers = LoginItemOffer.parse("""
+        add\tA\\\\B\t/Applications/A\\\\B.app\tnew
+        add\tTab\\there\t/Applications/Tab\\there.app\tnew\tsomething later
+        add\tBad\\q\t/x\tnew
+
+        """)
+        XCTAssertEqual(offers.map(\.name), ["A\\B", "Tab\there"])
+        XCTAssertEqual(offers[0].path, "/Applications/A\\B.app")
+    }
+
+    func testTheRealCheckOffersNothing() throws {
+        let tracked = LoginItemRow.tracked(in: try Fixture.text("mrk-122/login-items.txt"))
+        let offers = LoginItemOffer.parse(try Fixture.text("mrk-122/sync-login-items--check.out"))
+        XCTAssertEqual(offers, [])
+        XCTAssertFalse(tracked.isEmpty)
+        XCTAssertTrue(LoginItemRow.rows(tracked: tracked, offers: offers).allSatisfy { $0.state == .tracked })
     }
 
     func testRowsJoinTheFileAndTheCheck() {
@@ -289,7 +377,7 @@ final class DockListTests: XCTestCase {
         XCTAssertEqual(leftovers, [])
     }
 
-    /// dock-setup --check: four fields, escaped.
+    /// dock-setup --check before sevmorris/mrk#122: four fields, escaped.
     func testTheCheck() {
         let checks = DockCheck.parse("""
         app\t/Applications/Helium.app\t/Applications/Helium.app\tpresent
@@ -301,5 +389,51 @@ final class DockListTests: XCTestCase {
         XCTAssertEqual(checks[1].state, .missing)
         XCTAssertEqual(checks[2].line, "~/Odd\\name\there")
         XCTAssertEqual(checks[2].kind, .folder)
+        XCTAssertEqual(checks.map(\.docked), [nil, nil, nil])
+    }
+
+    /// sevmorris/mrk#122: a fifth field, unlisted lines, and whatever a
+    /// later mrk adds at the end.
+    func testTheCheckWithTheDock() {
+        let output = """
+        app\t/Applications/A.app\t/Applications/A.app\tpresent\tdocked
+        app\t/Applications/B.app\t/Applications/B.app\tpresent\tundocked\tsomething later
+        app\t/Applications/C.app\t/Applications/C.app\tmissing\tunknown
+        app\t/Applications/D.app\t/Applications/D.app\tpresent\tsomeday
+        unlisted\t\t/Applications/Signal.app\tpresent\tdocked
+        unlisted\t\t/Users/x/Odd\\\\name\\there\tmissing\tdocked\tsomething later
+        unlisted\t\t\tpresent\tdocked
+        weblink\t\thttps://example.com\tpresent\tdocked
+
+        """
+        let checks = DockCheck.parse(output)
+        XCTAssertEqual(checks.map(\.line), ["/Applications/A.app", "/Applications/B.app",
+                                            "/Applications/C.app", "/Applications/D.app"])
+        XCTAssertEqual(checks.map(\.docked), [.docked, .undocked, .unknown, nil],
+                       "a word Gearbox does not know reads as not saying")
+        let unlisted = UnlistedDockItem.parse(output)
+        XCTAssertEqual(unlisted, [
+            UnlistedDockItem(path: "/Applications/Signal.app", state: .present),
+            UnlistedDockItem(path: "/Users/x/Odd\\name\there", state: .missing),
+        ])
+        XCTAssertEqual(unlisted[0].name, "Signal")
+        XCTAssertTrue(unlisted[0].isApp)
+        XCTAssertEqual(DockList.line(for: URL(fileURLWithPath: unlisted[1].path), home: "/Users/x"), "~/Odd\\name\there")
+    }
+
+    /// The same config/dock.txt, checked by mrk before and after #122: each
+    /// item has its check either way.
+    func testTheRealChecksBeforeAndAfterTheContract() throws {
+        let list = DockList.parse(try Fixture.text("mrk-122/dock.txt"))
+        for (fixture, docked) in [("mrk-before-122/dock-setup--check.out", nil as Docked?),
+                                  ("mrk-122/dock-setup--check.out", .docked)] {
+            let output = try Fixture.text(fixture)
+            let checks = DockCheck.parse(output)
+            XCTAssertEqual(checks.map(\.line), list.items.map(\.line), fixture)
+            XCTAssertTrue(checks.allSatisfy { $0.state == .present && $0.docked == docked }, fixture)
+        }
+        XCTAssertEqual(UnlistedDockItem.parse(try Fixture.text("mrk-before-122/dock-setup--check.out")), [])
+        XCTAssertEqual(UnlistedDockItem.parse(try Fixture.text("mrk-122/dock-setup--check.out")),
+                       [UnlistedDockItem(path: "/Applications/Signal.app", state: .present)])
     }
 }

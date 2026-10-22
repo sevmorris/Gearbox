@@ -60,7 +60,8 @@ enum MrkCommand: Equatable, Sendable {
     case loginItemsIgnore(String)
     /// Stop tracking an app in config/login-items.txt and the manual.
     case loginItemsRemove(String)
-    /// Each item of config/dock.txt: app or folder, line, path, state.
+    /// Each item of config/dock.txt: app or folder, line, path, state, and
+    /// whether it is docked; then each unlisted item the Dock has.
     case dockCheck
 
     var script: String {

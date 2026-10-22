@@ -31,6 +31,17 @@ final class CommandTests: XCTestCase {
         }
     }
 
+    /// The failure when a check prints lines and Gearbox reads none names
+    /// the command as it ran, and says which side is older.
+    func testAnUnreadableCheckNamesTheCommand() {
+        guard case .failed(let message) = LoadPhase.unreadable(.defaultsCheck(withTrackpad: true)) else {
+            return XCTFail("expected a failure")
+        }
+        XCTAssertTrue(message.hasPrefix("Could not read scripts/defaults.sh --check --with-trackpad: "), message)
+        XCTAssertTrue(message.contains("this Gearbox is older than mrk's output"), message)
+        XCTAssertTrue(message.contains("Check for Updates"), message)
+    }
+
     func testTheTerminalCommands() {
         XCTAssertEqual(TerminalCommand.snapshotPrefs.command, "make snapshot-prefs")
         XCTAssertEqual(TerminalCommand.applyDefaults(withTrackpad: false).command, "make defaults")
@@ -66,6 +77,17 @@ final class RunnerTests: XCTestCase {
         let cwd = stub.root.resolvingSymlinksInPath().path
         XCTAssertEqual(stub.calls.map { $0.replacingOccurrences(of: "/private/var/", with: "/var/") },
                        ["scripts/dock-setup [--check] cwd=\(cwd.replacingOccurrences(of: "/private/var/", with: "/var/")) stdin=eof"])
+    }
+
+    /// The escapes, a carriage return and fields a later mrk adds reach the
+    /// parsers as the script printed them: the runner undoes nothing.
+    func testStdoutComesBackByteForByte() async throws {
+        let stub = try StubMrk()
+        let out = "add\tA\\\\B\t/Applications/A\\\\B.app\tnew\tlater\r\nunlisted\t\t/X\\tY.app\tpresent\tdocked\n"
+        try stub.answer("sync-login-items", ["--check"], out: out)
+        let result = try await stub.runner().run(.loginItemsCheck, in: stub.checkout)
+        XCTAssertEqual(result.stdout, Data(out.utf8))
+        XCTAssertEqual(LoginItemOffer.parse(result.stdoutText).map(\.name), ["A\\B"])
     }
 
     func testANameWithSpacesIsOneArgument() async throws {
