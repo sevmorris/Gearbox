@@ -6,9 +6,10 @@ import Foundation
 // --ignore. The one file it writes itself is config/dock.txt, the plain list
 // dock-setup reads, as Barkeep writes tools/picker/descriptions.tsv. What
 // changes the Mac (make defaults, make dock) or commits and pushes (make
-// snapshot-prefs) runs in a terminal, with its own prompts and output in
-// view. Gearbox never commits: mrk-push and pushall do that, with their secret
-// scan and gates, and Dipstick's Unrecorded panel shows what is waiting.
+// snapshot-prefs) runs in Gearbox's console, on a terminal of its own, with
+// its own prompts and output in view. Gearbox never commits: mrk-push and
+// pushall do that, with their secret scan and gates, and Dipstick's
+// Unrecorded panel shows what is waiting.
 
 /// An mrk checkout: ~/mrk, or the one MRK_ROOT names, as mrk-status and
 /// Dipstick read it.
@@ -96,18 +97,36 @@ enum MrkCommand: Equatable, Sendable {
     var timeout: Duration { self == .prefsCheck ? .seconds(180) : .seconds(60) }
 }
 
-/// What Gearbox runs in a terminal: the commands that change the Mac, or that
-/// commit and push, so their prompts and their output stay in view.
+/// What Gearbox runs in its console, on a terminal: the commands that change
+/// the Mac, or that commit and push, so their prompts and their output stay
+/// in view.
+///
+/// Gearbox 0.2 and earlier ran these in Terminal, through a self-deleting
+/// .command file. The console runs them as that file did, `make <target>`
+/// under zsh in the checkout, with the login shell's environment.
 enum TerminalCommand: Equatable, Sendable {
     case snapshotPrefs
     case applyDefaults(withTrackpad: Bool)
     case applyDock
+    /// make dock's dry run, which reads config/dock.txt and changes nothing:
+    /// what `--snapshot` shows in the console.
+    case dockDryRun
 
     var command: String {
         switch self {
         case .snapshotPrefs: return "make snapshot-prefs"
         case .applyDefaults(let trackpad): return trackpad ? "make trackpad" : "make defaults"
         case .applyDock: return "make dock"
+        case .dockDryRun: return "make dock ARGS=-n"
+        }
+    }
+
+    /// The pane that reads mrk again when the command has exited.
+    var pane: Pane {
+        switch self {
+        case .snapshotPrefs: return .preferences
+        case .applyDefaults: return .defaults
+        case .applyDock, .dockDryRun: return .dock
         }
     }
 }

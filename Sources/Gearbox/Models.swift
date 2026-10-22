@@ -54,8 +54,8 @@ final class AppModel {
     var selection: Pane? {
         didSet { store.set(selection?.rawValue, forKey: "selectedPane") }
     }
-    /// Set when a terminal command could not start.
-    var terminalError: String?
+    /// The command in the console, running or exited, until its sheet closes.
+    var console: ConsoleSession?
     /// A newer Gearbox, found by the last check that reached GitHub. The
     /// sidebar names it.
     private(set) var availableUpdate: AvailableUpdate?
@@ -132,18 +132,42 @@ final class AppModel {
         return nil
     }
 
-    /// Runs a command in a terminal, in the checkout, with the login shell's
-    /// PATH, as the terminal's own shell would have it.
-    func runInTerminal(_ command: TerminalCommand) async {
-        let env = await runner.resolvedEnvironment()
-        var exports = ["MRK_ROOT": checkout.root.path]
-        if let path = env["PATH"], !path.isEmpty { exports["PATH"] = path }
-        do {
-            try TerminalLauncher.run(command: command.command, directory: checkout.root.path, exports: exports)
-            terminalError = nil
-        } catch {
-            terminalError = "Could not open a terminal for \(command.command): \(error.localizedDescription)"
-        }
+    /// Runs a command in the console, in the checkout, and reads its pane
+    /// again once it has exited. One at a time: the console is a sheet, and
+    /// a second command waits for it to close.
+    ///
+    /// While the sheet is up, AppKit keeps the window from closing and Quit
+    /// from quitting (tried on 2026-10-22), so nothing short of a force quit
+    /// hangs up a command half way, between a commit and its push.
+    func runInConsole(_ command: TerminalCommand) async {
+        guard console == nil else { return }
+        let session = ConsoleSession(command: command)
+        console = session
+        let env = Self.consoleEnvironment(await runner.resolvedEnvironment(), checkout: checkout)
+        await session.run(environment: env, directory: checkout.root.path)
+        if case .exited = session.state { await load(command.pane) }
+    }
+
+    /// Closes the console once its command has exited.
+    func closeConsole() {
+        guard let console, !console.isRunning else { return }
+        self.console = nil
+    }
+
+    /// The environment of a console command: the login shell's, as a
+    /// terminal window has it, on a terminal that draws what TERM=dumb
+    /// promises. The .command file exported MRK_ROOT, and so does this.
+    static func consoleEnvironment(_ shell: [String: String], checkout: MrkCheckout) -> [String: String] {
+        var env = shell
+        env["MRK_ROOT"] = checkout.root.path
+        env["TERM"] = "dumb"
+        // A pager would wait for keys the console does not send.
+        env["PAGER"] = "cat"
+        env["GIT_PAGER"] = "cat"
+        // The terminal's size is the terminal's to say.
+        env["COLUMNS"] = nil
+        env["LINES"] = nil
+        return env
     }
 }
 

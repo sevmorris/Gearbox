@@ -81,7 +81,36 @@ enum Snapshot {
                 ok = false
             }
         }
-        return ok
+        return await writeConsole(model: model, over: window, to: dir) && ok
+    }
+
+    static var consoleFileName: String { "\(Pane.allCases.count + 1)-console.png" }
+
+    /// The console, last, running make dock's dry run, which reads
+    /// config/dock.txt and changes nothing. The sheet is a window of its own,
+    /// so it is drawn on its own.
+    @MainActor
+    private static func writeConsole(model: AppModel, over window: NSWindow, to dir: URL) async -> Bool {
+        Task { await model.runInConsole(.dockDryRun) }
+        var sheet: NSWindow?
+        for _ in 0..<300 {
+            if let attached = window.attachedSheet, model.console?.isRunning == false {
+                sheet = attached
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard let sheet else {
+            say("the console did not finish make dock ARGS=-n in 30 s")
+            return false
+        }
+        await settle(sheet)
+        let url = dir.appendingPathComponent(consoleFileName)
+        let drawn = capture(sheet, to: url)
+        say(drawn ? "wrote \(url.path), \(Int(sheet.frame.width))×\(Int(sheet.frame.height)) pt"
+                  : "could not draw the console")
+        model.closeConsole()
+        return drawn
     }
 
     @MainActor

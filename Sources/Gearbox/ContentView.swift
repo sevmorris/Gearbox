@@ -45,11 +45,8 @@ struct ContentView: View {
                 }
             }
         }
-        .alert("Could not open a terminal",
-               isPresented: Binding(get: { model.terminalError != nil }, set: { if !$0 { model.terminalError = nil } })) {
-            Button("OK") { model.terminalError = nil }
-        } message: {
-            Text(model.terminalError ?? "")
+        .sheet(item: $model.console) { session in
+            ConsoleSheet(session: session, close: model.closeConsole)
         }
     }
 }
