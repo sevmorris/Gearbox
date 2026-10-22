@@ -7,6 +7,14 @@ enum LoadPhase: Equatable, Sendable {
     case loading
     case loaded
     case failed(String)
+
+    /// A check printed lines and Gearbox read none of them. By mrk's --check
+    /// line contract a later mrk only adds fields and words, so that is an
+    /// mrk newer than this Gearbox, not a list with nothing in it.
+    static func unreadable(_ command: MrkCommand) -> LoadPhase {
+        .failed("Could not read \(command.script) \(command.arguments.joined(separator: " ")): "
+                + "this Gearbox is older than mrk's output. Choose Gearbox → Check for Updates….")
+    }
 }
 
 enum Pane: String, CaseIterable, Identifiable, Sendable {
@@ -163,9 +171,10 @@ final class PrefsModel {
         do {
             let result = try await runner.run(.prefsCheck, in: checkout)
             let table = AppPrefsTable.parse((try? String(contentsOf: checkout.appPrefs, encoding: .utf8)) ?? "")
-            groups = PrefGroup.group(PrefChange.parse(result.stdoutText), table: table)
+            let changes = PrefChange.parse(result.stdoutText)
+            groups = PrefGroup.group(changes, table: table)
             log = result.stderrText
-            phase = .loaded
+            phase = changes.isEmpty && MrkText.hasLines(result.stdoutText) ? .unreadable(.prefsCheck) : .loaded
         } catch {
             phase = .failed(error.localizedDescription)
         }
@@ -214,11 +223,8 @@ final class DefaultsModel {
         return entries.first { $0.id == selectedID }
     }
 
-    var counts: (set: Int, differs: Int, absent: Int) {
-        sections.reduce(into: (0, 0, 0)) { c, s in
-            let n = s.counts
-            c.0 += n.set; c.1 += n.differs; c.2 += n.absent
-        }
+    var counts: DefaultsCounts {
+        sections.reduce(DefaultsCounts()) { $0 + $1.counts }
     }
 
     /// The sections, with the filter and the search applied.
@@ -237,16 +243,22 @@ final class DefaultsModel {
     func load() async {
         phase = .loading
         do {
-            let result = try await runner.run(.defaultsCheck(withTrackpad: withTrackpad), in: checkout)
+            let command = MrkCommand.defaultsCheck(withTrackpad: withTrackpad)
+            let result = try await runner.run(command, in: checkout)
             let rows = DefaultsRow.parse((try? String(contentsOf: checkout.defaultsTable, encoding: .utf8)) ?? "")
             let descriptionsText = try? String(contentsOf: checkout.defaultsDescriptions, encoding: .utf8)
             descriptionsMissing = descriptionsText == nil
             let descriptions = DefaultDescription.parse(descriptionsText ?? "")
-            let joined = DefaultsEntry.join(checks: DefaultCheck.parse(result.stdoutText),
-                                            rows: rows, descriptions: descriptions)
+            let checks = DefaultCheck.parse(result.stdoutText)
+            let joined = DefaultsEntry.join(checks: checks, rows: rows, descriptions: descriptions)
             sections = DefaultsSection.group(joined)
+            if checks.isEmpty && MrkText.hasLines(result.stdoutText) {
+                phase = .unreadable(command)
+                return
+            }
             if selected == nil {
-                selectedID = joined.first { $0.check.state != .set }?.id ?? joined.first?.id
+                selectedID = (joined.first { $0.check.state.isDrift } ?? joined.first { $0.check.state != .set }
+                              ?? joined.first)?.id
             }
             phase = .loaded
         } catch {
@@ -292,8 +304,9 @@ final class LoginItemsModel {
             let result = try await runner.run(.loginItemsCheck, in: checkout)
             let tracked = LoginItemRow.tracked(
                 in: (try? String(contentsOf: checkout.loginItems, encoding: .utf8)) ?? "")
-            rows = LoginItemRow.rows(tracked: tracked, offers: LoginItemOffer.parse(result.stdoutText))
-            phase = .loaded
+            let offers = LoginItemOffer.parse(result.stdoutText)
+            rows = LoginItemRow.rows(tracked: tracked, offers: offers)
+            phase = offers.isEmpty && MrkText.hasLines(result.stdoutText) ? .unreadable(.loginItemsCheck) : .loaded
         } catch let error as MrkError where error.status == 1 {
             rows = []
             if case .failed(_, _, let message) = error {
@@ -334,6 +347,9 @@ final class DockModel {
     var list = DockList(header: [], items: [], trailer: [])
     /// line → what dock-setup --check says of it.
     var checks: [String: DockCheck] = [:]
+    /// What the Dock has and the list does not, in the Dock's order: make
+    /// dock deletes these.
+    var unlisted: [UnlistedDockItem] = []
     var editError: String?
     /// The file as Gearbox last read or wrote it.
     private var loadedText: String?
@@ -361,14 +377,20 @@ final class DockModel {
     func check() async {
         do {
             let result = try await runner.run(.dockCheck, in: checkout)
-            checks = Dictionary(DockCheck.parse(result.stdoutText).map { ($0.line, $0) },
-                                uniquingKeysWith: { first, _ in first })
-            phase = .loaded
+            // Unlisted lines have no line in the file, so they stay out of
+            // the dictionary, which is keyed by it.
+            let listed = DockCheck.parse(result.stdoutText)
+            checks = Dictionary(listed.map { ($0.line, $0) }, uniquingKeysWith: { first, _ in first })
+            unlisted = UnlistedDockItem.parse(result.stdoutText)
+            phase = listed.isEmpty && unlisted.isEmpty && MrkText.hasLines(result.stdoutText)
+                ? .unreadable(.dockCheck) : .loaded
         } catch let error as MrkError where error.status == 1 {
             checks = [:]
+            unlisted = []
             phase = .failed("dock-setup refuses config/dock.txt: \(error.localizedDescription)")
         } catch {
             checks = [:]
+            unlisted = []
             phase = .failed(error.localizedDescription)
         }
     }
@@ -380,6 +402,11 @@ final class DockModel {
     func add(_ url: URL) async {
         let line = DockList.line(for: url, home: home)
         await edit { try $0.add(line) }
+    }
+
+    /// Lists an item the Dock has, so make dock keeps it.
+    func add(_ item: UnlistedDockItem) async {
+        await add(URL(fileURLWithPath: item.path))
     }
 
     func remove(_ line: String) async {

@@ -13,12 +13,13 @@ struct PrefChange: Hashable, Sendable, Identifiable {
 
     var id: String { "\(file)\t\(key)" }
 
-    /// Three fields, separated by tabs, with no header. A line in any other
-    /// shape is passed over.
+    /// Three fields or more, with no header, by mrk's --check line contract,
+    /// each with its escapes undone: a plist key may hold a tab, a newline
+    /// or a backslash. A line in any other shape is passed over.
     static func parse(_ output: String) -> [PrefChange] {
         MrkText.lines(output).compactMap { line in
-            let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard fields.count == 3, !fields[0].isEmpty, let kind = Kind(rawValue: fields[2]) else { return nil }
+            guard let fields = MrkText.fields(line), fields.count >= 3, !fields[0].isEmpty,
+                  let kind = Kind(rawValue: fields[2]) else { return nil }
             return PrefChange(file: fields[0], key: fields[1], kind: kind)
         }
     }

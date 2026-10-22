@@ -187,6 +187,126 @@ final class ModelTests: XCTestCase {
         XCTAssertTrue(message.contains("older than Gearbox"), message)
     }
 
+    /// What the Dock has and the list lacks shows on its own, out of the
+    /// checks keyed by line, and Add lists it as DockList.line writes it.
+    func testAnUnlistedDockItemShowsAndCanBeAdded() async throws {
+        let stub = try StubMrk()
+        try stub.write("config/dock.txt", "/Applications/A.app\n~/Work Apps\n")
+        try stub.answer("dock-setup", ["--check"], out: """
+        app\t/Applications/A.app\t/Applications/A.app\tpresent\tdocked
+        folder\t~/Work Apps\t/Users/x/Work Apps\tpresent\tundocked
+        unlisted\t\t/Applications/Signal.app\tpresent\tdocked
+        unlisted\t\t/Users/x/Downloads\tpresent\tdocked
+
+        """)
+        let model = DockModel(checkout: stub.checkout, runner: stub.runner(), home: "/Users/x")
+        await model.load()
+        XCTAssertEqual(model.phase, .loaded)
+        XCTAssertEqual(Set(model.checks.keys), ["/Applications/A.app", "~/Work Apps"])
+        XCTAssertEqual(model.checks["~/Work Apps"]?.docked, .undocked)
+        XCTAssertEqual(model.unlisted.map(\.path), ["/Applications/Signal.app", "/Users/x/Downloads"])
+
+        await model.add(model.unlisted[0])
+        await model.add(model.unlisted[1])
+        XCTAssertEqual(try stub.read("config/dock.txt"),
+                       "/Applications/A.app\n/Applications/Signal.app\n~/Work Apps\n~/Downloads\n")
+        XCTAssertNil(model.editError)
+        XCTAssertEqual(stub.calls.count, 3, "a check after the load and after each add")
+    }
+
+    /// Each pane against the real output of sevmorris/mrk#122's scripts.
+    func testEachPaneReadsTheRealChecks() async throws {
+        let stub = try StubMrk()
+        for file in ["dock.txt", "defaults.tsv", "login-items.txt", "app-prefs.tsv"] {
+            try stub.write("config/\(file)", try Fixture.text("mrk-122/\(file)"))
+        }
+        try stub.answer("dock-setup", ["--check"], out: try Fixture.text("mrk-122/dock-setup--check.out"))
+        try stub.answer("defaults.sh", ["--check", "--with-trackpad"],
+                        out: try Fixture.text("mrk-122/defaults.sh--check--with-trackpad.out"))
+        try stub.answer("sync-login-items", ["--check"], out: try Fixture.text("mrk-122/sync-login-items--check.out"))
+        try stub.answer("snapshot-prefs", ["--check"], out: try Fixture.text("mrk-122/snapshot-prefs--check.out"))
+
+        let dock = DockModel(checkout: stub.checkout, runner: stub.runner(), home: "/Users/sev")
+        await dock.load()
+        XCTAssertEqual(dock.phase, .loaded)
+        XCTAssertEqual(dock.checks.count, dock.list.items.count)
+        XCTAssertEqual(dock.unlisted.map(\.name), ["Signal"])
+
+        let store = stub.store()
+        store.set(true, forKey: "defaultsWithTrackpad")
+        let defaults = DefaultsModel(checkout: stub.checkout, runner: stub.runner(), store: store)
+        await defaults.load()
+        XCTAssertEqual(defaults.phase, .loaded)
+        XCTAssertEqual(defaults.counts, DefaultsCounts(set: 148, differs: 0, absent: 2, waiting: 0))
+        XCTAssertEqual(defaults.selected?.check.state, .absent)
+
+        let login = LoginItemsModel(checkout: stub.checkout, runner: stub.runner())
+        await login.load()
+        XCTAssertEqual(login.phase, .loaded, "no line is nothing to offer, not an error")
+        XCTAssertFalse(login.rows.isEmpty)
+
+        let prefs = PrefsModel(checkout: stub.checkout, runner: stub.runner())
+        await prefs.load()
+        XCTAssertEqual(prefs.phase, .loaded)
+        XCTAssertEqual(prefs.groups.map(\.name), ["sevmorris-apps"])
+    }
+
+    /// A Mac where Mail was never opened: its keys wait, and are not what
+    /// the pane selects first.
+    func testDefaultsKeysThatWaitForTheirApp() async throws {
+        let stub = try StubMrk()
+        try stub.answer("defaults.sh", ["--check"], out: """
+        com.apple.mail\tAddressesIncludeNameOnPasteboard\tfalse\t\tnodomain
+        NSGlobalDomain\tA\ttrue\ttrue\tset
+        NSGlobalDomain\tB\ttrue\t\tabsent
+
+        """)
+        let model = DefaultsModel(checkout: stub.checkout, runner: stub.runner(), store: stub.store())
+        await model.load()
+        XCTAssertEqual(model.phase, .loaded)
+        XCTAssertEqual(model.counts, DefaultsCounts(set: 1, differs: 0, absent: 1, waiting: 1))
+        XCTAssertEqual(model.selected?.check.key, "B")
+    }
+
+    /// Lines, and not one Gearbox can read: an mrk newer than this Gearbox,
+    /// which each pane says, rather than show an empty list as nothing to do.
+    func testEachPaneSaysWhenItCanReadNoLine() async throws {
+        let stub = try StubMrk()
+        try stub.write("config/dock.txt", "/Applications/A.app\n")
+        try stub.answer("dock-setup", ["--check"], out: "tile\t/Applications/A.app\tpresent\n")
+        try stub.answer("defaults.sh", ["--check"], out: "NSGlobalDomain\tA\ttrue\ttrue\tperhaps\n")
+        try stub.answer("sync-login-items", ["--check"], out: "offer\tRaycast\t/Applications/Raycast.app\tnew\n")
+        try stub.answer("snapshot-prefs", ["--check"], out: "Keka.plist\tVersion\n")
+
+        let dock = DockModel(checkout: stub.checkout, runner: stub.runner(), home: "/Users/x")
+        await dock.load()
+        let defaults = DefaultsModel(checkout: stub.checkout, runner: stub.runner(), store: stub.store())
+        await defaults.load()
+        let login = LoginItemsModel(checkout: stub.checkout, runner: stub.runner())
+        await login.load()
+        let prefs = PrefsModel(checkout: stub.checkout, runner: stub.runner())
+        await prefs.load()
+
+        for (phase, script) in [(dock.phase, "scripts/dock-setup --check"),
+                                (defaults.phase, "scripts/defaults.sh --check"),
+                                (login.phase, "scripts/sync-login-items --check"),
+                                (prefs.phase, "scripts/snapshot-prefs --check")] {
+            guard case .failed(let message) = phase else { XCTFail("\(script): got \(phase)"); continue }
+            XCTAssertTrue(message.contains(script), message)
+            XCTAssertTrue(message.contains("this Gearbox is older than mrk's output"), message)
+        }
+    }
+
+    /// No line at all is an empty list, as before.
+    func testNoLineIsNothingToDo() async throws {
+        let stub = try StubMrk()
+        try stub.answer("snapshot-prefs", ["--check"], out: "\n")
+        let prefs = PrefsModel(checkout: stub.checkout, runner: stub.runner())
+        await prefs.load()
+        XCTAssertEqual(prefs.phase, .loaded)
+        XCTAssertEqual(prefs.changeCount, 0)
+    }
+
     func testTheAppRemembersThePaneInItsStore() throws {
         let stub = try StubMrk()
         let store = stub.store()

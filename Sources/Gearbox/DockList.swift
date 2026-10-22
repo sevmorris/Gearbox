@@ -129,7 +129,16 @@ struct DockList: Equatable, Sendable {
     }
 }
 
-/// One line of `dock-setup --check`.
+/// Whether an item is in the Dock now, as `dock-setup --check` says in its
+/// fifth field.
+enum Docked: String, Sendable {
+    case docked, undocked
+    /// dock-setup could not read the Dock: no dockutil, or `dockutil --list`
+    /// failed.
+    case unknown
+}
+
+/// One line of `dock-setup --check` for an item of config/dock.txt.
 struct DockCheck: Hashable, Sendable {
     enum Kind: String, Sendable { case app, folder }
     enum State: String, Sendable { case present, missing }
@@ -140,14 +149,47 @@ struct DockCheck: Hashable, Sendable {
     /// The path it names, with ~/ expanded.
     let path: String
     let state: State
+    /// nil from an mrk before sevmorris/mrk#122, which printed four fields.
+    var docked: Docked? = nil
 
-    /// Four fields, escaped as config/defaults.tsv escapes them. A line in
-    /// any other shape is passed over.
+    /// Four fields or more, by mrk's --check line contract: kind, line,
+    /// path, state, and docked when the mrk says it. A line of another kind,
+    /// such as unlisted, is passed over.
     static func parse(_ output: String) -> [DockCheck] {
         MrkText.lines(output).compactMap { line in
-            guard let f = MrkText.fields(line), f.count == 4, let kind = Kind(rawValue: f[0]),
+            guard let f = MrkText.fields(line), f.count >= 4, let kind = Kind(rawValue: f[0]),
                   let state = State(rawValue: f[3]) else { return nil }
-            return DockCheck(kind: kind, line: f[1], path: f[2], state: state)
+            return DockCheck(kind: kind, line: f[1], path: f[2], state: state,
+                             docked: f.count > 4 ? Docked(rawValue: f[4]) : nil)
+        }
+    }
+}
+
+/// One `unlisted` line of `dock-setup --check`: a file or folder in the Dock
+/// that config/dock.txt does not list, which `make dock` deletes from the
+/// Dock. It has no line in the file, so it is not a DockCheck.
+struct UnlistedDockItem: Hashable, Sendable, Identifiable {
+    /// The path as the Dock names it.
+    let path: String
+    /// missing when the Dock keeps a tile for something no longer there.
+    let state: DockCheck.State
+
+    var id: String { path }
+    var isApp: Bool { path.hasSuffix(".app") }
+    var name: String {
+        var name = (path as NSString).lastPathComponent
+        if name.hasSuffix(".app") { name.removeLast(4) }
+        return name
+    }
+
+    /// `unlisted`, an empty field, the path, present or missing, and fields
+    /// after those, which Gearbox does not read. Any other line is passed
+    /// over.
+    static func parse(_ output: String) -> [UnlistedDockItem] {
+        MrkText.lines(output).compactMap { line in
+            guard let f = MrkText.fields(line), f.count >= 4, f[0] == "unlisted", !f[2].isEmpty,
+                  let state = DockCheck.State(rawValue: f[3]) else { return nil }
+            return UnlistedDockItem(path: f[2], state: state)
         }
     }
 }

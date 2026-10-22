@@ -22,12 +22,12 @@ struct LoginItemOffer: Hashable, Sendable, Identifiable {
 
     var id: String { "\(action.rawValue)\t\(name)" }
 
-    /// Four fields, separated by tabs. A line in any other shape is passed
-    /// over.
+    /// Four fields or more, by mrk's --check line contract, each with its
+    /// escapes undone, so a name with a backslash goes back to --add as
+    /// sync-login-items wrote it. A line in any other shape is passed over.
     static func parse(_ output: String) -> [LoginItemOffer] {
         MrkText.lines(output).compactMap { line in
-            let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard f.count == 4, let action = Action(rawValue: f[0]), !f[1].isEmpty,
+            guard let f = MrkText.fields(line), f.count >= 4, let action = Action(rawValue: f[0]), !f[1].isEmpty,
                   let reason = Reason(rawValue: f[3]) else { return nil }
             return LoginItemOffer(action: action, name: f[1], path: f[2], reason: reason)
         }

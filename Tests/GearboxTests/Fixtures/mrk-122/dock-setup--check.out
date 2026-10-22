@@ -1,0 +1,14 @@
+app	/Applications/DuckDuckGo.app	/Applications/DuckDuckGo.app	present	docked
+app	/Applications/Google Chrome.app	/Applications/Google Chrome.app	present	docked
+app	/Applications/Helium.app	/Applications/Helium.app	present	docked
+app	/Applications/Safari.app	/Applications/Safari.app	present	docked
+app	/Applications/iZotope RX 12 Audio Editor.app	/Applications/iZotope RX 12 Audio Editor.app	present	docked
+app	/Applications/WaxOnWaxOff.app	/Applications/WaxOnWaxOff.app	present	docked
+app	/Applications/ClipHack.app	/Applications/ClipHack.app	present	docked
+app	/Applications/Logic Pro.app	/Applications/Logic Pro.app	present	docked
+app	/Applications/iTerm.app	/Applications/iTerm.app	present	docked
+app	/Applications/Claude.app	/Applications/Claude.app	present	docked
+app	/Applications/Antigravity.app	/Applications/Antigravity.app	present	docked
+app	/Applications/WhatsApp.app	/Applications/WhatsApp.app	present	docked
+folder	~/Work Apps	/Users/sev/Work Apps	present	docked
+unlisted		/Applications/Signal.app	present	docked

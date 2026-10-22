@@ -40,6 +40,18 @@ struct DockPane: View {
                             ForEach(folders) { item in row(item).tag(item.line) }
                         }
                     }
+                    if !dock.unlisted.isEmpty {
+                        // No tag: these are not lines of the file, so Remove
+                        // has nothing to take.
+                        Section {
+                            ForEach(dock.unlisted) { item in unlistedRow(item) }
+                        } header: {
+                            Text("In the Dock, Not in the List")
+                        } footer: {
+                            Text("make dock deletes these from the Dock. Add one to keep it.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .onDeleteCommand { if let selection { Task { await dock.remove(selection) } } }
             }
@@ -76,8 +88,10 @@ struct DockPane: View {
     private var subtitle: String {
         guard dock.phase == .loaded else { return "" }
         let missing = dock.checks.values.filter { $0.state == .missing }.count
-        let n = dock.list.items.count
-        return missing == 0 ? "\(n) items" : "\(n) items · \(missing) missing on this Mac"
+        var parts = ["\(dock.list.items.count) items"]
+        if missing > 0 { parts.append("\(missing) missing on this Mac") }
+        if !dock.unlisted.isEmpty { parts.append("\(dock.unlisted.count) in the Dock, not in the list") }
+        return parts.joined(separator: " · ")
     }
 
     private func row(_ item: DockList.Item) -> some View {
@@ -94,6 +108,9 @@ struct DockPane: View {
             if check?.state == .missing {
                 Badge(text: item.isApp ? "not installed" : "no such folder", color: .orange)
                     .help("make dock skips it on this Mac")
+            } else if check?.docked == .undocked {
+                Badge(text: "not in the Dock", color: .secondary)
+                    .help("make dock adds it")
             }
         }
         .contextMenu {
@@ -101,6 +118,30 @@ struct DockPane: View {
             Button("Show in Finder") {
                 if let path = check?.path { NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "") }
             }
+        }
+    }
+
+    private func unlistedRow(_ item: UnlistedDockItem) -> some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: item.path))
+                .resizable().frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name)
+                Text(item.path).font(.caption.monospaced()).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            Spacer()
+            if item.state == .missing {
+                Badge(text: item.isApp ? "not installed" : "no such folder", color: .orange)
+                    .help("The Dock keeps a tile for something no longer on this Mac")
+            }
+            Button("Add to the List") { Task { await dock.add(item) } }
+                .help("Add it to config/dock.txt, so make dock keeps it")
+        }
+        .contextMenu {
+            Button("Add to the Dock List") { Task { await dock.add(item) } }
+            Button("Show in Finder") { NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "") }
+                .disabled(item.state == .missing)
         }
     }
 
