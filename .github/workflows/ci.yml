@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-shell:
+    # Ubuntu rather than macOS: shellcheck ships on the runner image, and this
+    # job needs no Xcode, so it finishes long before the tests do.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck the bash scripts
+        run: shellcheck build.sh scripts/*.sh
+
+  test:
+    # A Swift package, so there is no project or scheme: `swift test` builds it
+    # and runs GearboxTests. The runner matrix is the one repo-standards'
+    # ci-matrix check holds every app to: macos-15 and macos-26 with Xcode
+    # 26.3, plus xcode-27, the toolchain releases are built with.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            xcode: '26.3'
+          - os: macos-26
+            xcode: '26.3'
+          - os: xcode-27
+            xcode: '27.0'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ matrix.xcode }}
+
+      - name: Test
+        # A healthy run takes well under a minute; bound it so a hang fails fast.
+        timeout-minutes: 10
+        run: swift test
