@@ -63,6 +63,10 @@ struct DefaultCheck: Hashable, Sendable {
         /// make defaults passes it over until the app has, so it is not
         /// drift. An mrk before sevmorris/mrk#122 calls it absent.
         case nodomain
+        /// A key that config/defaults-skip.tsv lists: make defaults does not
+        /// write it, whatever its value. Gearbox shows it as off. An mrk
+        /// before sevmorris/mrk#130 has no such key.
+        case skipped
 
         /// What a run of make defaults would write.
         var isDrift: Bool { self == .differs || self == .absent }
@@ -87,6 +91,13 @@ struct DefaultCheck: Hashable, Sendable {
     }
 }
 
+/// A domain and a key of config/defaults.tsv: what defaults.sh's options of
+/// one key take.
+struct DefaultsKey: Hashable, Sendable {
+    let domain: String
+    let key: String
+}
+
 /// A key as the defaults pane shows it: what defaults.sh --check found, with
 /// its line of config/defaults.tsv and its description.
 struct DefaultsEntry: Identifiable, Hashable, Sendable {
@@ -95,10 +106,21 @@ struct DefaultsEntry: Identifiable, Hashable, Sendable {
     let description: DefaultDescription?
     /// The other domains of the same setting, when this is its first.
     var alsoDomains: [String] = []
+    /// Every domain of the same setting, this one among them, in the order
+    /// of the file. The switch turns them off or on together, as MRK-1
+    /// shows them as one setting.
+    var settingDomains: [String] = []
 
     var id: String { "\(check.domain)\t\(check.key)" }
     var section: String { row?.section ?? "Not in config/defaults.tsv" }
     var title: String { description?.title ?? check.key }
+    var isOn: Bool { check.state != .skipped }
+
+    /// The keys the switch and Apply change: this key in each domain of its
+    /// setting.
+    var keys: [DefaultsKey] {
+        (settingDomains.isEmpty ? [check.domain] : settingDomains).map { DefaultsKey(domain: $0, key: check.key) }
+    }
 
     /// Every --check line, in its order, joined to the table and the
     /// descriptions. A line whose section, key, type and value repeat an
@@ -108,8 +130,10 @@ struct DefaultsEntry: Identifiable, Hashable, Sendable {
         var rowByID: [String: DefaultsRow] = [:]
         var firstOfSetting: [String: DefaultsRow] = [:]
         var mirrors: [String: [String]] = [:]
+        var domainsOfSetting: [String: [String]] = [:]
         for row in rows {
             rowByID["\(row.domain)\t\(row.key)"] = row
+            domainsOfSetting[row.setting, default: []].append(row.domain)
             if let first = firstOfSetting[row.setting] {
                 mirrors["\(first.domain)\t\(first.key)", default: []].append(row.domain)
             } else {
@@ -124,7 +148,8 @@ struct DefaultsEntry: Identifiable, Hashable, Sendable {
                 description = descriptions["\(first.domain)\t\(first.key)"]
             }
             return DefaultsEntry(check: check, row: row, description: description,
-                                 alsoDomains: mirrors[id] ?? [])
+                                 alsoDomains: mirrors[id] ?? [],
+                                 settingDomains: row.flatMap { domainsOfSetting[$0.setting] } ?? [check.domain])
         }
     }
 }
@@ -143,6 +168,7 @@ struct DefaultsSection: Identifiable, Hashable, Sendable {
             case .differs: c.differs += 1
             case .absent: c.absent += 1
             case .nodomain: c.waiting += 1
+            case .skipped: c.skipped += 1
             }
         }
     }
@@ -165,9 +191,12 @@ struct DefaultsCounts: Equatable, Sendable {
     var absent = 0
     /// nodomain: keys that wait for their app to make its preferences.
     var waiting = 0
+    /// Keys that config/defaults-skip.tsv lists: off.
+    var skipped = 0
 
     static func + (a: DefaultsCounts, b: DefaultsCounts) -> DefaultsCounts {
         DefaultsCounts(set: a.set + b.set, differs: a.differs + b.differs,
-                       absent: a.absent + b.absent, waiting: a.waiting + b.waiting)
+                       absent: a.absent + b.absent, waiting: a.waiting + b.waiting,
+                       skipped: a.skipped + b.skipped)
     }
 }

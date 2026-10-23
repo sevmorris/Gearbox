@@ -13,6 +13,13 @@ final class CommandTests: XCTestCase {
             (.loginItemsIgnore("Raycast"), "scripts/sync-login-items", ["--ignore", "Raycast"]),
             (.loginItemsRemove("Old"), "scripts/sync-login-items", ["--remove", "Old"]),
             (.dockCheck, "scripts/dock-setup", ["--check"]),
+            (.defaultsOff([DefaultsKey(domain: "com.apple.dock", key: "tilesize")]), "scripts/defaults.sh",
+             ["--skip", "com.apple.dock", "tilesize", "--revert", "com.apple.dock", "tilesize"]),
+            (.defaultsOn([DefaultsKey(domain: "a.one", key: "K"), DefaultsKey(domain: "a.two", key: "K")]),
+             "scripts/defaults.sh",
+             ["--unskip", "a.one", "K", "--key", "a.one", "K", "--unskip", "a.two", "K", "--key", "a.two", "K"]),
+            (.defaultsApply([DefaultsKey(domain: "com.apple.dock", key: "tilesize")]), "scripts/defaults.sh",
+             ["--key", "com.apple.dock", "tilesize"]),
         ]
         for (command, script, arguments) in cases {
             XCTAssertEqual(command.script, script, "\(command)")
@@ -20,12 +27,18 @@ final class CommandTests: XCTestCase {
         }
         XCTAssertEqual(MrkCommand.loginItemsAdd("Chrono Plus").displayLine,
                        #"$ scripts/sync-login-items --add "Chrono Plus""#)
+        XCTAssertEqual(MrkCommand.defaultsApply([DefaultsKey(domain: "com.apple.Terminal", key: "Default Window Settings")])
+                        .displayLine,
+                       #"$ scripts/defaults.sh --key com.apple.Terminal "Default Window Settings""#)
     }
 
     /// No command Gearbox runs by itself commits: none passes -c.
     func testNothingCommits() {
         let all: [MrkCommand] = [.prefsCheck, .defaultsCheck(withTrackpad: true), .loginItemsCheck,
-                                 .loginItemsAdd("a"), .loginItemsIgnore("a"), .loginItemsRemove("a"), .dockCheck]
+                                 .loginItemsAdd("a"), .loginItemsIgnore("a"), .loginItemsRemove("a"), .dockCheck,
+                                 .defaultsOff([DefaultsKey(domain: "a", key: "b")]),
+                                 .defaultsOn([DefaultsKey(domain: "a", key: "b")]),
+                                 .defaultsApply([DefaultsKey(domain: "a", key: "b")])]
         for command in all {
             XCTAssertFalse(command.arguments.contains { $0 == "-c" || $0 == "--commit" }, "\(command)")
         }

@@ -206,6 +206,12 @@ final class DefaultsParserTests: XCTestCase {
                        ["Tap to Click", "Tap to Click", "Show All File Extensions", "RichText"])
         XCTAssertEqual(entries[0].alsoDomains, ["com.apple.driver.AppleBluetoothMultitouch.trackpad"])
         XCTAssertEqual(entries[1].check.state, .differs)
+        // The switch of either domain turns the setting in both.
+        let both = [DefaultsKey(domain: "com.apple.AppleMultitouchTrackpad", key: "Clicking"),
+                    DefaultsKey(domain: "com.apple.driver.AppleBluetoothMultitouch.trackpad", key: "Clicking")]
+        XCTAssertEqual(entries[0].keys, both)
+        XCTAssertEqual(entries[1].keys, both)
+        XCTAssertEqual(entries[2].keys, [DefaultsKey(domain: "NSGlobalDomain", key: "AppleShowAllExtensions")])
         XCTAssertNil(entries[3].description)
         XCTAssertEqual(entries[3].row?.when, "existing")
 
@@ -220,6 +226,24 @@ final class DefaultsParserTests: XCTestCase {
             checks: DefaultCheck.parse("com.new\tKey\t1\t\tabsent\n"), rows: [], descriptions: [:])
         XCTAssertEqual(entries.first?.section, "Not in config/defaults.tsv")
         XCTAssertEqual(entries.first?.title, "Key")
+        XCTAssertEqual(entries.first?.keys, [DefaultsKey(domain: "com.new", key: "Key")])
+    }
+
+    /// sevmorris/mrk#130: skipped, for a key config/defaults-skip.tsv lists.
+    /// It is off, and not drift, whatever its value.
+    func testSkippedIsOffAndNotDrift() {
+        let checks = DefaultCheck.parse("""
+        NSGlobalDomain\tA\ttrue\tfalse\tskipped
+        NSGlobalDomain\tB\ttrue\t\tskipped\ta later field
+        NSGlobalDomain\tC\ttrue\ttrue\tset
+
+        """)
+        XCTAssertEqual(checks.map(\.state), [.skipped, .skipped, .set])
+        XCTAssertEqual(checks.map(\.state.isDrift), [false, false, false])
+        let entries = DefaultsEntry.join(checks: checks, rows: [], descriptions: [:])
+        XCTAssertEqual(entries.map(\.isOn), [false, false, true])
+        XCTAssertEqual(DefaultsSection(name: "x", entries: entries).counts,
+                       DefaultsCounts(set: 1, differs: 0, absent: 0, waiting: 0, skipped: 2))
     }
 }
 
