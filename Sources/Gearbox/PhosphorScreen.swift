@@ -1,12 +1,18 @@
+// Shared verbatim across the sibling app repos (Gearbox, Dipstick). Keep the
+// copies byte-identical: scripts/check-shared.sh compares them and a release
+// preflight fails when they drift. Anything one app needs on its own belongs
+// in that app's files, not here.
+
 import AppKit
 import SwiftUI
 
 // The console's tube: Magic Backup Machine's phosphor screen, copied rather
-// than shared, as MBM's is a copy of KeyVault's. MBM draws a log that only
-// grows; the console draws a terminal, with a cursor and the keys typed at
-// it, so the text view is the console's own (ConsoleView.swift) and only the
-// glass is copied: the style, the type, the face of the tube, the screen's
-// decoration, the clip that keeps the text on the glass, and the scroller.
+// than shared with MBM, as MBM's is a copy of KeyVault's. MBM draws a log
+// that only grows; the console draws a terminal, with a cursor and the keys
+// typed at it, so the text view is the console's own (ConsoleScreenView.swift)
+// and only the glass is copied: the style, the type, the face of the tube, the
+// screen's decoration, the clip that keeps the text on the glass, and the
+// scroller.
 
 /// The colour of the tube.
 enum PhosphorStyle: String, CaseIterable, Identifiable {

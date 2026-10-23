@@ -75,38 +75,3 @@ final class ConsoleSession: Identifiable {
         stops += 1
     }
 }
-
-/// What a key pressed in the console types at the terminal.
-enum ConsoleKeys {
-    /// The bytes for a key, or nil for a key the console leaves to the text
-    /// view and the menus.
-    static func bytes(characters: String?, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> [UInt8]? {
-        // ⌘ belongs to the app: Copy, Select All, Stop.
-        if modifiers.contains(.command) { return nil }
-        // The keypad's Enter types U+0003, which a terminal reads as ⌃C.
-        if keyCode == 76 { return [0x0D] }
-        guard let characters, !characters.isEmpty else { return nil }
-        let scalars = characters.unicodeScalars
-        // The arrows, Page Up and Down and the function keys arrive as
-        // AppKit's private-use characters. A dumb terminal has none of them,
-        // and the text view scrolls with the page keys.
-        if scalars.contains(where: { (0xF700...0xF8FF).contains($0.value) }) { return nil }
-        if scalars.count == 1, let c = scalars.first, c.value < 0x20 || c.value == 0x7F {
-            switch c.value {
-            case 0x0D, 0x09, 0x7F:
-                // Return, Tab and Delete.
-                return [UInt8(c.value)]
-            case 0x19, 0x1A:
-                // ⌃Y and ⌃Z suspend the program, and with no shell's job
-                // control nothing could start it again. ⇧Tab arrives as
-                // U+0019 too.
-                return nil
-            default:
-                // ⌃C, ⌃D, ⌃U and the rest when ⌃ is held. Escape types
-                // nothing.
-                return modifiers.contains(.control) ? [UInt8(c.value)] : nil
-            }
-        }
-        return Array(characters.utf8)
-    }
-}
