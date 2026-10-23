@@ -4,6 +4,21 @@ All notable changes to Gearbox are documented here. Every released version has a
 
 Write a version's entry before releasing it, and put the same prose in `release-notes/v<version>.md`: `release.sh` publishes that file as the release's notes, and stops before building anything when it is absent.
 
+## [0.5] — 2026-10-23
+
+Gearbox says when macOS keeps a key from it, and opens the setting that lets it read the key.
+
+**Added**
+- **Keys Gearbox cannot read show as no access.** Mail keeps its settings where macOS lets an app read them only with Full Disk Access, and TextEdit and Passwords keep theirs where an app also needs permission to get the data of other apps. Without it, mrk's `defaults.sh --check` now reports their keys as `noaccess` ([sevmorris/mrk#131](https://github.com/sevmorris/mrk/pull/131)), and the macOS Defaults pane shows each with a lock and a "no access" badge, its switch greyed out, and "not known" for its value. "Not set" includes them, and the subtitle counts them.
+- **Open Full Disk Access…**, in a banner over the list and in the detail of such a key, opens System Settings → Privacy & Security → Full Disk Access. macOS has no prompt for this permission, so turn Gearbox on there, and let macOS quit and reopen it.
+
+**Fixed**
+- Without Full Disk Access, Mail's key showed as waiting, though it was set. Without permission to get the data of other apps, TextEdit's showed the same, and a key's switch or `make defaults` from the console could write Passwords' keys to a file that Passwords does not read. With mrk#131 they are reported as no access, passed over by `make defaults`, and refused by the switch.
+
+**Requirements**
+- A Mac with Apple silicon.
+- An mrk with [sevmorris/mrk#131](https://github.com/sevmorris/mrk/pull/131). With an older mrk, Gearbox works as 0.4 does.
+
 ## [0.4] — 2026-10-23
 
 Each macOS default has a switch, so a key mrk sets can be turned off, and on again.

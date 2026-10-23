@@ -146,6 +146,33 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(model.entries.map(\.isOn), [true])
     }
 
+    /// A key Gearbox may not read is not set as far as it can tell, so Not set
+    /// shows it; the pane's message names how many, and the settings link is
+    /// the Full Disk Access pane.
+    func testKeysWithNoAccess() async throws {
+        let stub = try StubMrk()
+        try stub.answer("defaults.sh", ["--check"], out: """
+        NSGlobalDomain\tA\ttrue\ttrue\tset
+        com.apple.mail\tAddressesIncludeNameOnPasteboard\tfalse\t\tnoaccess
+        com.apple.TextEdit\tRichText\t0\t\tnoaccess
+
+        """)
+        let model = DefaultsModel(checkout: stub.checkout, runner: stub.runner(), store: stub.store())
+        await model.load()
+        XCTAssertEqual(model.phase, .loaded)
+        XCTAssertEqual(model.counts.noAccess, 2)
+        XCTAssertEqual(model.selected?.check.state, .noaccess, "with nothing to fix, the first key to see is one Gearbox cannot read")
+        model.filter = .unset
+        XCTAssertEqual(model.shown.flatMap(\.entries).map(\.check.key), ["AddressesIncludeNameOnPasteboard", "RichText"])
+        model.filter = .off
+        XCTAssertTrue(model.shown.isEmpty)
+
+        XCTAssertEqual(FullDiskAccess.settings.absoluteString,
+                       "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+        XCTAssertTrue(FullDiskAccess.message(2).hasPrefix("Gearbox cannot read 2 keys without Full Disk Access."))
+        XCTAssertTrue(FullDiskAccess.message(1).hasPrefix("Gearbox cannot read 1 key without Full Disk Access."))
+    }
+
     /// Off shows the skipped keys; Not set leaves them out, since make
     /// defaults leaves them as they are on purpose.
     func testTheOffFilter() async throws {

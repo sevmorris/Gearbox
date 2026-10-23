@@ -229,6 +229,24 @@ final class DefaultsParserTests: XCTestCase {
         XCTAssertEqual(entries.first?.keys, [DefaultsKey(domain: "com.new", key: "Key")])
     }
 
+    /// sevmorris/mrk#131: noaccess, for a key whose app keeps its settings in
+    /// a container Gearbox may not read. Its value is empty and not known.
+    func testNoaccessIsNotDriftAndHasNoValue() {
+        let checks = DefaultCheck.parse("""
+        com.apple.mail\tAddressesIncludeNameOnPasteboard\tfalse\t\tnoaccess
+        com.apple.Passwords\tshowMenuBarExtra\tfalse\t\tnoaccess\ta later field
+        NSGlobalDomain\tA\ttrue\ttrue\tset
+
+        """)
+        XCTAssertEqual(checks.map(\.state), [.noaccess, .noaccess, .set])
+        XCTAssertEqual(checks.map(\.state.isDrift), [false, false, false])
+        XCTAssertEqual(checks[0].current, "")
+        let entries = DefaultsEntry.join(checks: checks, rows: [], descriptions: [:])
+        XCTAssertEqual(entries.map(\.isOn), [true, true, true], "no access says nothing of the skip list")
+        XCTAssertEqual(DefaultsSection(name: "x", entries: entries).counts,
+                       DefaultsCounts(set: 1, differs: 0, absent: 0, waiting: 0, skipped: 0, noAccess: 2))
+    }
+
     /// sevmorris/mrk#130: skipped, for a key config/defaults-skip.tsv lists.
     /// It is off, and not drift, whatever its value.
     func testSkippedIsOffAndNotDrift() {

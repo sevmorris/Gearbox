@@ -1,4 +1,23 @@
+import AppKit
 import SwiftUI
+
+/// Full Disk Access, which macOS gives an app only by hand: there is no
+/// prompt to ask for it. Without it Gearbox cannot read the keys of the apps
+/// that keep their settings in a protected container, and defaults.sh says so
+/// with noaccess (sevmorris/mrk#131).
+enum FullDiskAccess {
+    /// System Settings → Privacy & Security → Full Disk Access.
+    static let settings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
+
+    static func open() { NSWorkspace.shared.open(settings) }
+
+    /// What the pane says over the list, for COUNT keys it cannot read.
+    static func message(_ count: Int) -> String {
+        let keys = count == 1 ? "1 key" : "\(count) keys"
+        return "Gearbox cannot read \(keys) without Full Disk Access. "
+            + "Turn Gearbox on under Full Disk Access, and let macOS quit and reopen it."
+    }
+}
 
 /// Every key of config/defaults.tsv against this Mac, with its description.
 struct DefaultsPane: View {
@@ -26,6 +45,23 @@ struct DefaultsPane: View {
                       systemImage: "info.circle")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.vertical, 8)
+                Divider()
+            }
+            if defaults.phase == .loaded && defaults.counts.noAccess > 0 {
+                // The label takes the width the button leaves, and wraps in
+                // it. Made to keep its full height beside a Spacer, it was
+                // offered a sliver, grew a word a line, and pushed the whole
+                // window's content out of view.
+                HStack(spacing: 12) {
+                    Label(FullDiskAccess.message(defaults.counts.noAccess), systemImage: "lock.fill")
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Open Full Disk Access…") { FullDiskAccess.open() }
+                        .fixedSize()
+                        .help("Open System Settings → Privacy & Security → Full Disk Access")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.vertical, 8)
                 Divider()
             }
             if let error = defaults.decisionError {
@@ -105,6 +141,7 @@ struct DefaultsPane: View {
         var text = "\(c.set) set · \(c.differs) differ · \(c.absent) absent"
         if c.waiting > 0 { text += " · \(c.waiting) waiting" }
         if c.skipped > 0 { text += " · \(c.skipped) off" }
+        if c.noAccess > 0 { text += " · \(c.noAccess) no access" }
         return text
     }
 }
@@ -118,6 +155,7 @@ struct StateMark: View {
         case .absent: Image(systemName: "circle.dashed").foregroundStyle(.secondary)
         case .nodomain: Image(systemName: "hourglass").foregroundStyle(.secondary)
         case .skipped: Image(systemName: "minus.circle").foregroundStyle(.secondary)
+        case .noaccess: Image(systemName: "lock.fill").foregroundStyle(.orange)
         }
     }
 }
@@ -139,13 +177,14 @@ struct DefaultSwitch: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .labelsHidden()
-                .disabled(defaults.busy != nil || defaults.skipListMissing)
+                .disabled(defaults.busy != nil || defaults.skipListMissing || entry.check.state == .noaccess)
                 .help(help)
         }
     }
 
     private var help: String {
         if defaults.skipListMissing { return "This mrk cannot turn a key off. Run make pull." }
+        if entry.check.state == .noaccess { return "Gearbox cannot read or change this key without Full Disk Access" }
         let keys = entry.keys.map { "\($0.domain) \($0.key)" }.joined(separator: ", ")
         return entry.isOn
             ? "Turn off: make defaults leaves \(keys), and it goes back to its value from before mrk"
@@ -210,6 +249,16 @@ struct DefaultDetail: View {
                             + "Turn it on to write mrk's value again.",
                           color: .secondary)
                 }
+                if entry.check.state == .noaccess {
+                    VStack(alignment: .leading, spacing: 8) {
+                        block("No access",
+                              "This app keeps its settings where macOS lets only an app with Full Disk Access read them, "
+                                + "so Gearbox cannot tell this key's value, or change it. Add Gearbox under Full Disk Access, "
+                                + "and let macOS quit and reopen it.",
+                              color: .orange)
+                        Button("Open Full Disk Access…") { FullDiskAccess.open() }
+                    }
+                }
                 if entry.check.state == .nodomain {
                     block("Waits for the app",
                           "Its preferences do not exist yet, so make defaults passes this key over. "
@@ -257,6 +306,7 @@ struct DefaultDetail: View {
         case .absent: return Badge(text: "absent", color: .secondary)
         case .nodomain: return Badge(text: "waiting", color: .secondary)
         case .skipped: return Badge(text: "off", color: .secondary)
+        case .noaccess: return Badge(text: "no access", color: .orange)
         }
     }
 
@@ -267,6 +317,7 @@ struct DefaultDetail: View {
         case .set, .differs: return value(entry.check.current, type: nil)
         // A skipped key's current value is empty when the key is absent.
         case .skipped: return entry.check.current.isEmpty ? "absent" : value(entry.check.current, type: nil)
+        case .noaccess: return "not known without Full Disk Access"
         }
     }
 
