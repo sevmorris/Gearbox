@@ -3,7 +3,8 @@ import Foundation
 // Gearbox is a window over mrk's own scripts. It reads the lists in config/
 // and asks the scripts' check modes what they find, and every decision goes
 // back through a script's own flag: sync-login-items --add, --remove and
-// --ignore. The one file it writes itself is config/dock.txt, the plain list
+// --ignore, and defaults.sh --skip, --unskip, --key and --revert. The one
+// file it writes itself is config/dock.txt, the plain list
 // dock-setup reads, as Barkeep writes tools/picker/descriptions.tsv. What
 // changes the Mac (make defaults, make dock) or commits and pushes (make
 // snapshot-prefs) runs in Gearbox's console, on a terminal of its own, with
@@ -28,6 +29,7 @@ struct MrkCheckout: Equatable, Sendable {
 
     var defaultsTable: URL        { file("config/defaults.tsv") }
     var defaultsDescriptions: URL { file("docs/defaults/descriptions.tsv") }
+    var defaultsSkip: URL         { file("config/defaults-skip.tsv") }
     var appPrefs: URL             { file("config/app-prefs.tsv") }
     var loginItems: URL           { file("config/login-items.txt") }
     var dockList: URL             { file("config/dock.txt") }
@@ -53,6 +55,14 @@ enum MrkCommand: Equatable, Sendable {
     case prefsCheck
     /// Each key of config/defaults.tsv against this Mac.
     case defaultsCheck(withTrackpad: Bool)
+    /// Turn keys off: list them in config/defaults-skip.tsv, so make defaults
+    /// passes them over, and put back the value each had before mrk wrote it.
+    case defaultsOff([DefaultsKey])
+    /// Turn keys on: take them out of config/defaults-skip.tsv, and write
+    /// mrk's value.
+    case defaultsOn([DefaultsKey])
+    /// Write mrk's value of keys that are on.
+    case defaultsApply([DefaultsKey])
     /// The login items an interactive run would offer.
     case loginItemsCheck
     /// Track a login item in config/login-items.txt and the manual.
@@ -68,7 +78,7 @@ enum MrkCommand: Equatable, Sendable {
     var script: String {
         switch self {
         case .prefsCheck: return "scripts/snapshot-prefs"
-        case .defaultsCheck: return "scripts/defaults.sh"
+        case .defaultsCheck, .defaultsOff, .defaultsOn, .defaultsApply: return "scripts/defaults.sh"
         case .loginItemsCheck, .loginItemsAdd, .loginItemsIgnore, .loginItemsRemove:
             return "scripts/sync-login-items"
         case .dockCheck: return "scripts/dock-setup"
@@ -79,6 +89,9 @@ enum MrkCommand: Equatable, Sendable {
         switch self {
         case .prefsCheck: return ["--check"]
         case .defaultsCheck(let trackpad): return trackpad ? ["--check", "--with-trackpad"] : ["--check"]
+        case .defaultsOff(let keys): return keys.flatMap { ["--skip", $0.domain, $0.key, "--revert", $0.domain, $0.key] }
+        case .defaultsOn(let keys): return keys.flatMap { ["--unskip", $0.domain, $0.key, "--key", $0.domain, $0.key] }
+        case .defaultsApply(let keys): return keys.flatMap { ["--key", $0.domain, $0.key] }
         case .loginItemsCheck: return ["--check"]
         case .loginItemsAdd(let name): return ["--add", name]
         case .loginItemsIgnore(let name): return ["--ignore", name]

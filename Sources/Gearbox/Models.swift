@@ -210,9 +210,25 @@ final class PrefsModel {
 @Observable @MainActor
 final class DefaultsModel {
     enum Filter: String, CaseIterable, Identifiable, Sendable {
-        case all, unset
+        case all, unset, off
         var id: String { rawValue }
-        var title: String { self == .all ? "All keys" : "Not set" }
+        var title: String {
+            switch self {
+            case .all: return "All keys"
+            case .unset: return "Not set"
+            case .off: return "Off"
+            }
+        }
+
+        /// A key that is off is not "not set": make defaults leaves it as
+        /// it is, on purpose.
+        func shows(_ state: DefaultCheck.State) -> Bool {
+            switch self {
+            case .all: return true
+            case .unset: return state != .set && state != .skipped
+            case .off: return state == .skipped
+            }
+        }
     }
 
     let checkout: MrkCheckout
@@ -223,6 +239,12 @@ final class DefaultsModel {
     var selectedID: String?
     /// The checkout has no docs/defaults/descriptions.tsv: an mrk from before it.
     var descriptionsMissing = false
+    /// The checkout has no config/defaults-skip.tsv: an mrk from before
+    /// sevmorris/mrk#130, whose defaults.sh has no options of one key.
+    var skipListMissing = false
+    /// The entry a switch or Apply is running for.
+    var busy: String?
+    var decisionError: String?
 
     var withTrackpad: Bool {
         didSet { store.set(withTrackpad, forKey: "defaultsWithTrackpad") }
@@ -256,7 +278,7 @@ final class DefaultsModel {
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased()
         return sections.compactMap { section in
             let entries = section.entries.filter { e in
-                (filter == .all || e.check.state != .set)
+                filter.shows(e.check.state)
                     && (needle.isEmpty || [e.title, e.check.domain, e.check.key, e.description?.category ?? ""]
                         .contains { $0.lowercased().contains(needle) })
             }
@@ -264,14 +286,17 @@ final class DefaultsModel {
         }
     }
 
-    func load() async {
-        phase = .loading
+    /// Reads the keys. After a switch or Apply the list stays up while it
+    /// reads, so it keeps its place: `showingProgress` is false.
+    func load(showingProgress: Bool = true) async {
+        if showingProgress || phase != .loaded { phase = .loading }
         do {
             let command = MrkCommand.defaultsCheck(withTrackpad: withTrackpad)
             let result = try await runner.run(command, in: checkout)
             let rows = DefaultsRow.parse((try? String(contentsOf: checkout.defaultsTable, encoding: .utf8)) ?? "")
             let descriptionsText = try? String(contentsOf: checkout.defaultsDescriptions, encoding: .utf8)
             descriptionsMissing = descriptionsText == nil
+            skipListMissing = !FileManager.default.fileExists(atPath: checkout.defaultsSkip.path)
             let descriptions = DefaultDescription.parse(descriptionsText ?? "")
             let checks = DefaultCheck.parse(result.stdoutText)
             let joined = DefaultsEntry.join(checks: checks, rows: rows, descriptions: descriptions)
@@ -288,6 +313,34 @@ final class DefaultsModel {
         } catch {
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    /// Turns the entry's setting off or on, in each of its domains, then
+    /// reads the keys again. Off lists them in config/defaults-skip.tsv and
+    /// puts back the value each had before mrk; on takes them out and writes
+    /// mrk's value. defaults.sh restarts Finder, the Dock and the menu bar
+    /// when a key changed.
+    func setOn(_ on: Bool, for entry: DefaultsEntry) async {
+        await decide(on ? .defaultsOn(entry.keys) : .defaultsOff(entry.keys), for: entry)
+    }
+
+    /// Writes mrk's value of the entry's setting, in each of its domains.
+    func apply(_ entry: DefaultsEntry) async {
+        await decide(.defaultsApply(entry.keys), for: entry)
+    }
+
+    private func decide(_ command: MrkCommand, for entry: DefaultsEntry) async {
+        guard busy == nil else { return }
+        busy = entry.id
+        selectedID = entry.id
+        defer { busy = nil }
+        do {
+            _ = try await runner.run(command, in: checkout)
+            decisionError = nil
+        } catch {
+            decisionError = error.localizedDescription
+        }
+        await load(showingProgress: false)
     }
 }
 

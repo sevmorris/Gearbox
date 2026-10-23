@@ -84,6 +84,88 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(again.filter, .unset)
     }
 
+    /// The switch turns every domain of a setting, in one run of defaults.sh,
+    /// then reads the keys again with the list still up, on the key it
+    /// turned. Apply writes the keys of one setting.
+    func testTheSwitchTurnsEachDomainOfASettingThenChecksAgain() async throws {
+        let stub = try StubMrk()
+        try stub.write("config/defaults-skip.tsv", "# the keys to skip\n")
+        try stub.write("config/defaults.tsv", """
+        NSGlobalDomain\tA\tbool\ttrue\talways\tOne
+        com.apple.AppleMultitouchTrackpad\tClicking\tbool\ttrue\ttrackpad\tTrackpad
+        com.apple.driver.AppleBluetoothMultitouch.trackpad\tClicking\tbool\ttrue\ttrackpad\tTrackpad
+
+        """)
+        try stub.answer("defaults.sh", ["--check"], out: """
+        NSGlobalDomain\tA\ttrue\tfalse\tdiffers
+        com.apple.AppleMultitouchTrackpad\tClicking\ttrue\ttrue\tset
+        com.apple.driver.AppleBluetoothMultitouch.trackpad\tClicking\ttrue\ttrue\tset
+
+        """)
+        let model = DefaultsModel(checkout: stub.checkout, runner: stub.runner(), store: stub.store())
+        await model.load()
+        XCTAssertFalse(model.skipListMissing)
+        let a = try XCTUnwrap(model.entries.first)
+        let tap = model.entries[2]
+
+        await model.setOn(false, for: tap)
+        XCTAssertEqual(model.phase, .loaded)
+        XCTAssertEqual(model.selectedID, tap.id)
+        await model.setOn(true, for: tap)
+        await model.apply(a)
+        let trackpad = "com.apple.AppleMultitouchTrackpad", bluetooth = "com.apple.driver.AppleBluetoothMultitouch.trackpad"
+        XCTAssertEqual(stub.calls.map { $0.components(separatedBy: " cwd=")[0] }, [
+            "scripts/defaults.sh [--check]",
+            "scripts/defaults.sh [--skip] [\(trackpad)] [Clicking] [--revert] [\(trackpad)] [Clicking] "
+                + "[--skip] [\(bluetooth)] [Clicking] [--revert] [\(bluetooth)] [Clicking]",
+            "scripts/defaults.sh [--check]",
+            "scripts/defaults.sh [--unskip] [\(trackpad)] [Clicking] [--key] [\(trackpad)] [Clicking] "
+                + "[--unskip] [\(bluetooth)] [Clicking] [--key] [\(bluetooth)] [Clicking]",
+            "scripts/defaults.sh [--check]",
+            "scripts/defaults.sh [--key] [NSGlobalDomain] [A]",
+            "scripts/defaults.sh [--check]",
+        ])
+        XCTAssertNil(model.decisionError)
+        XCTAssertNil(model.busy)
+    }
+
+    /// An mrk from before sevmorris/mrk#130 exits 2 for --skip. Gearbox says
+    /// to run make pull, and the list stays as it was.
+    func testARefusedSwitchIsShownAndTheListStays() async throws {
+        let stub = try StubMrk()
+        try stub.answer("defaults.sh", ["--check"], out: "NSGlobalDomain\tA\ttrue\ttrue\tset\n")
+        try stub.answer("defaults.sh", ["--skip", "NSGlobalDomain", "A", "--revert", "NSGlobalDomain", "A"],
+                        err: "unknown argument: --skip\n", status: 2)
+        let model = DefaultsModel(checkout: stub.checkout, runner: stub.runner(), store: stub.store())
+        await model.load()
+        XCTAssertTrue(model.skipListMissing, "the stub checkout has no config/defaults-skip.tsv")
+        await model.setOn(false, for: try XCTUnwrap(model.entries.first))
+        let error = try XCTUnwrap(model.decisionError)
+        XCTAssertTrue(error.contains("this mrk is older than Gearbox. Run make pull"), error)
+        XCTAssertEqual(model.phase, .loaded)
+        XCTAssertEqual(model.entries.map(\.isOn), [true])
+    }
+
+    /// Off shows the skipped keys; Not set leaves them out, since make
+    /// defaults leaves them as they are on purpose.
+    func testTheOffFilter() async throws {
+        let stub = try StubMrk()
+        try stub.answer("defaults.sh", ["--check"], out: """
+        NSGlobalDomain\tA\ttrue\ttrue\tset
+        NSGlobalDomain\tB\ttrue\t\tabsent
+        NSGlobalDomain\tC\ttrue\tfalse\tskipped
+        com.apple.mail\tD\tfalse\t\tnodomain
+
+        """)
+        let model = DefaultsModel(checkout: stub.checkout, runner: stub.runner(), store: stub.store())
+        await model.load()
+        XCTAssertEqual(model.counts, DefaultsCounts(set: 1, differs: 0, absent: 1, waiting: 1, skipped: 1))
+        model.filter = .unset
+        XCTAssertEqual(model.shown.flatMap(\.entries).map(\.check.key), ["B", "D"])
+        model.filter = .off
+        XCTAssertEqual(model.shown.flatMap(\.entries).map(\.check.key), ["C"])
+    }
+
     /// sync-login-items --check exits 1 with no line when System Events
     /// fails: the pane says so, and names Automation, and lists nothing.
     func testLoginItemsShowTheRefusal() async throws {
