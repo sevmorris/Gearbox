@@ -1,12 +1,18 @@
+// Shared verbatim across the sibling app repos (Gearbox, Dipstick). Keep the
+// copies byte-identical: scripts/check-shared.sh compares them and a release
+// preflight fails when they drift. Anything one app needs on its own belongs
+// in that app's files, not here.
+
 import Darwin
 import Foundation
 
 /// Runs a program on a pseudo-terminal of its own, as a terminal window runs
 /// it, and hands back what it prints as it prints it.
 ///
-/// What Gearbox runs in its console asks questions: snapshot-prefs's secret
-/// scan and lib.sh's confirm test `[[ -t 0 ]]` and then `read </dev/tty`. A
-/// pipe answers neither, so the program gets a terminal. forkpty makes the
+/// What the console runs asks questions: mrk-push's commit message, the
+/// secret scan before a commit, lib.sh's confirm, which tests `[[ -t 0 ]]`
+/// and then reads `</dev/tty`, and sudo's password. A pipe answers none of
+/// them, so the program gets a terminal. forkpty makes the
 /// pair, starts a session, and makes the terminal the session's controlling
 /// terminal, which /dev/tty needs. posix_spawn cannot do the last part on
 /// macOS: a child spawned with POSIX_SPAWN_SETSID that opens the terminal
@@ -58,8 +64,11 @@ final class PseudoTerminal: @unchecked Sendable {
         // it needs is made here, and it touches only raw pointers.
         let argv = CStringArray([executable] + arguments)
         let envp = CStringArray(environment.keys.sorted().map { "\($0)=\(environment[$0]!)" })
-        let strings = CStringArray([directory, "gearbox: cannot enter \(directory)\r\n",
-                                    "gearbox: cannot run \(executable)\r\n"])
+        // The child's errors name the app, as a shell's name the shell:
+        // "gearbox: cannot enter …".
+        let name = ProcessInfo.processInfo.processName.lowercased()
+        let strings = CStringArray([directory, "\(name): cannot enter \(directory)\r\n",
+                                    "\(name): cannot run \(executable)\r\n"])
         let (argvPointer, envpPointer) = (argv.pointer, envp.pointer)
         let (dir, noDir, noExec) = (strings.pointer[0]!, strings.pointer[1]!, strings.pointer[2]!)
         let (noDirLength, noExecLength) = (strlen(noDir), strlen(noExec))
@@ -72,7 +81,7 @@ final class PseudoTerminal: @unchecked Sendable {
         let pid = forkpty(&fd, nil, nil, &size)
         if pid == 0 {
             // The child. The terminal is its stdin, stdout and stderr, and its
-            // controlling terminal. None of Gearbox's other files goes with it.
+            // controlling terminal. None of the app's other files goes with it.
             var other: Int32 = 3
             while other < openMax {
                 close(other)
@@ -81,7 +90,7 @@ final class PseudoTerminal: @unchecked Sendable {
             // And the signals are as a terminal's shell has them. The child
             // keeps the mask of the thread that forked, and a GCD thread
             // blocks SIGINT, so ⌃C would wait for ever; exec keeps whatever
-            // Gearbox ignores.
+            // the app ignores.
             var signal: Int32 = 1
             while signal < NSIG {
                 _ = sigaction(signal, &defaultAction, nil)
@@ -99,8 +108,8 @@ final class PseudoTerminal: @unchecked Sendable {
         withExtendedLifetime((argv, envp, strings)) {}
         guard pid > 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
 
-        // Not for the programs Gearbox starts later: a check mode that held
-        // the master would keep the terminal open.
+        // Not for the programs the app starts later: a check mode or an
+        // mrk-status that held the master would keep the terminal open.
         _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         let terminal = PseudoTerminal(pid: pid, master: fd)
@@ -113,7 +122,7 @@ final class PseudoTerminal: @unchecked Sendable {
     /// the exit. Both end on one queue, so the exit always comes after the
     /// last output.
     private func watch(_ fd: Int32, _ continuation: AsyncStream<Event>.Continuation, drainGrace: Duration) {
-        let queue = DispatchQueue(label: "io.github.sevmorris.Gearbox.PseudoTerminal")
+        let queue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "app").PseudoTerminal")
         let ending = Ending(continuation)
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler {

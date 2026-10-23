@@ -251,7 +251,9 @@ final class PseudoTerminalTests: XCTestCase {
             case .exit(let code): status = code
             }
         }
-        XCTAssertTrue(output.contains("gearbox: cannot enter"), output)
+        // Named as the process is, which here is the test runner, not Gearbox.
+        let name = ProcessInfo.processInfo.processName.lowercased()
+        XCTAssertTrue(output.contains("\(name): cannot enter \(scratch.path)/gone"), output)
         XCTAssertEqual(status, 126)
     }
 
