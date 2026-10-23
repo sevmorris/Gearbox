@@ -67,6 +67,12 @@ struct DefaultCheck: Hashable, Sendable {
         /// write it, whatever its value. Gearbox shows it as off. An mrk
         /// before sevmorris/mrk#130 has no such key.
         case skipped
+        /// A key whose app keeps its preferences in a container that macOS
+        /// does not let Gearbox read: Mail's without Full Disk Access, and
+        /// TextEdit's and Passwords' without permission to get the data of
+        /// other apps as well. Its value is not known. sevmorris/mrk#131; an
+        /// mrk before it read such a key as nodomain or absent.
+        case noaccess
 
         /// What a run of make defaults would write.
         var isDrift: Bool { self == .differs || self == .absent }
@@ -169,6 +175,7 @@ struct DefaultsSection: Identifiable, Hashable, Sendable {
             case .absent: c.absent += 1
             case .nodomain: c.waiting += 1
             case .skipped: c.skipped += 1
+            case .noaccess: c.noAccess += 1
             }
         }
     }
@@ -193,10 +200,12 @@ struct DefaultsCounts: Equatable, Sendable {
     var waiting = 0
     /// Keys that config/defaults-skip.tsv lists: off.
     var skipped = 0
+    /// Keys Gearbox may not read without Full Disk Access.
+    var noAccess = 0
 
     static func + (a: DefaultsCounts, b: DefaultsCounts) -> DefaultsCounts {
         DefaultsCounts(set: a.set + b.set, differs: a.differs + b.differs,
                        absent: a.absent + b.absent, waiting: a.waiting + b.waiting,
-                       skipped: a.skipped + b.skipped)
+                       skipped: a.skipped + b.skipped, noAccess: a.noAccess + b.noAccess)
     }
 }
