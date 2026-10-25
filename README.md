@@ -1,5 +1,7 @@
 # Gearbox
 
+> **Retired on 2026-10-24 — use [Dipstick](https://github.com/sevmorris/Dipstick) 0.4 or later instead.** Dipstick took in Gearbox's four panes as mrk Settings, a window of its own beside its menu bar dashboard, with one console for both. Download it from the [Dipstick releases](https://github.com/sevmorris/Dipstick/releases/latest). macOS gives each app its own permissions, so give Dipstick the Full Disk Access and System Events access that Gearbox had. Gearbox gets no further updates, and this repository is archived and kept for reference.
+
 A Settings window over [mrk](https://github.com/sevmorris/mrk), this Mac's setup repository. It is the third app of the GUI suite over mrk, after Dipstick (the menu bar dashboard) and Barkeep's mrk mode (the Brewfile).
 
 **The rule:** Gearbox runs mrk's own scripts through their check modes and decision options, and never does their work itself. When it needs an interface mrk lacks, the interface goes into mrk first, with its tests and its entry in BIN-1 (`docs/bin/mrk-usage.html`).
